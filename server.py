@@ -238,6 +238,91 @@ def get_individual_games(rr):
        'note':'Individual rows have Week 0 and no date. Game rows are displayed in report order only, not assigned to a league week.',
        'player_count':len(people),'game_count':scanned,'players':people}
 
+
+def assign_candidate_weeks(result, matches):
+    """Match ordered individual result sequences to dated team game slots.
+    A week is assigned only if EVERY compatible order-preserving alignment
+    puts the game in the same schedule week. Ambiguity stays unassigned.
+    """
+    schedule_dates={int(w['num']):w['date'] for w in SCHEDULE}
+    matched=ambiguous=unmatched=0
+    for person in result['players']:
+        team=norm(person['team'])
+        slots=[]
+        for match in sorted(matches,key=lambda m:int(m['week'])):
+            if team not in (norm(match['teams'][0]),norm(match['teams'][1])):
+                continue
+            for k,fmt in enumerate(match['formats']):
+                if k>=len(match['wins']):continue
+                kind='MPR' if 'cricket' in str(fmt).lower() else 'PPD'
+                slots.append({'metric':kind,'game':str(fmt),
+                     'win':norm(match['teams'][match['wins'][k]])==team,
+                     'week':int(match['week']),
+                     'date':schedule_dates.get(int(match['week']))})
+        for metric in ('PPD','MPR'):
+            indexes=[i for i,g in enumerate(person['games']) if g['metric']==metric]
+            seq=[person['games'][i] for i in indexes]
+            options=[slot for slot in slots if slot['metric']==metric]
+            m,n=len(seq),len(options)
+            if not m:continue
+            if not n or m>n:
+                unmatched+=m
+                continue
+            def compatible(i,j):
+                game=seq[i];slot=options[j]
+                game_type=norm(game.get('game',''))
+                slot_type=norm(slot['game'])
+                return (game['win']==slot['win'] and game_type==slot_type)
+            # Forward: first i player games can fit within first j team slots.
+            forward=[[False]*(n+1) for _ in range(m+1)]
+            forward[0][0]=True
+            for j in range(n):
+                for i in range(m+1):
+                    if not forward[i][j]:continue
+                    forward[i][j+1]=True
+                    if i<m and compatible(i,j):forward[i+1][j+1]=True
+            if not forward[m][n]:
+                unmatched+=m
+                continue
+            # Suffix: games from i onward fit within slots from j onward.
+            suffix=[[False]*(n+1) for _ in range(m+1)]
+            for j in range(n+1):suffix[m][j]=True
+            for j in range(n-1,-1,-1):
+                for i in range(m-1,-1,-1):
+                    suffix[i][j]=(suffix[i][j+1] or
+                                  compatible(i,j) and suffix[i+1][j+1])
+            for k,game in enumerate(seq):
+                possible={options[j]['week'] for j in range(n)
+                          if forward[k][j] and compatible(k,j) and suffix[k+1][j+1]}
+                if len(possible)==1:
+                    week=next(iter(possible))
+                    game['inferred_week']=week
+                    game['inferred_date']=schedule_dates.get(week)
+                    game['week_confidence']='unique_ordered_alignment'
+                    matched+=1
+                elif possible:
+                    game['candidate_weeks']=sorted(possible)
+                    ambiguous+=1
+                else:
+                    unmatched+=1
+        byweek={}
+        for g in person['games']:
+            week=g.get('inferred_week')
+            if week is None:continue
+            key=str(week)
+            item=byweek.setdefault(key,{'week':week,'date':schedule_dates.get(week),
+                                        'PPD':[],'MPR':[]})
+            item[g['metric']].append(g['rate'])
+        person['weekly']=[{'week':v['week'],'date':v['date'],
+            'PPD':{'games':len(v['PPD']),'average':round(sum(v['PPD'])/len(v['PPD']),2)} if v['PPD'] else None,
+            'MPR':{'games':len(v['MPR']),'average':round(sum(v['MPR'])/len(v['MPR']),2)} if v['MPR'] else None}
+            for v in sorted(byweek.values(),key=lambda x:x['week'])]
+    result['matching']={'assigned':matched,'ambiguous':ambiguous,'unmatched':unmatched,
+       'method':'Ordered per-player results aligned to matching team game type, win/loss and custom dated schedule',
+       'caveat':'Weeks are inferred, not printed by LeagueLeader. A week is displayed only when every possible order-preserving match places the game there.'}
+    result['week_verified']=False
+    return result
+
 @app.route('/api/player-games')
 def individual_game_stats():
     """Standalone optional statistics API. A failure cannot break /api/live."""
@@ -246,6 +331,14 @@ def individual_game_stats():
             return jsonify(player_games_cache['payload'])
         _,soup=fetch(PLAYER_DETAIL)
         result=get_individual_games(rows(soup))
+        official=refresh()
+        result=assign_candidate_weeks(result,official['matches'])
+        joe=next((p for p in result['players'] if norm(p['name'])=='joebanker'),None)
+        if joe:
+            last=next((g for g in reversed(joe['games']) if g['metric']=='PPD'),None)
+            result['joe_last_01_check']={'last_ppd':last['rate'],'inferred_week':last.get('inferred_week'),
+                'inferred_date':last.get('inferred_date'), 'candidate_weeks':last.get('candidate_weeks',[]),
+                'matches_user_reported_12_82':abs(last['rate']-12.82)<0.005} if last else None
         if result['game_count']<20 or result['player_count']<5:
             raise ValueError('Unrecognized player game table layout; no fabricated records returned.')
         result['updated']=datetime.now().astimezone().isoformat(timespec='seconds')
