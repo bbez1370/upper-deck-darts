@@ -8,7 +8,14 @@
 <body><header><div><a href="/">← Back to Upper Deck</a><p class="eyebrow">2021 to present · League history</p><h1>Player Profiles</h1><p class="muted">Meet the players. Follow careers. Celebrate their best darts.</p></div></header>
 <main><p id="status" class="notice" role="status" aria-live="polite">Loading player records…</p>
 <div class="layout"><aside><div class="panel"><h2>Find a player</h2><input id="search" aria-label="Search players" placeholder="Search player names"><p id="count" class="muted small"></p><div id="names" class="list"></div></div><div class="panel"><h2>Your profile</h2><div id="account"></div></div></aside>
-<div><article id="view" class="panel"><p class="muted">Choose a player to see their career.</p></article><article class="panel"><h2>Historical report coverage</h2><div id="coverage" class="muted">Checking reports…</div></article><article class="panel" id="moderation" hidden><h2>Officer: Player identity approvals</h2><p class="muted small">Only approve a player when you know this account belongs to that person.</p><div id="claims"></div></article></div></div></main>
+<div><article id="view" class="panel"><p class="muted">Choose a player to see their career.</p></article><article class="panel"><h2>Historical report coverage</h2><div id="coverage" class="muted">Checking reports…</div></article><article class="panel" id="cleanupPanel" hidden><h2>Officer: Clean up player history</h2><p class="muted small">Merge an alternate report name into the player who should keep the career record, or hide a player from the career directory. Original LeagueLeader data is never deleted. All edits can be undone.</p><p id="cleanupMessage" class="notice" role="status">No cleanup edits yet.</p>
+<form id="cleanupForm">
+<label class="formfield" for="cleanupSource">Record to merge or hide</label><select id="cleanupSource" required></select>
+<label class="formfield" for="cleanupAction">Action</label><select id="cleanupAction"><option value="merge">Merge into another player</option><option value="exclude">Hide from career directory</option></select>
+<div id="cleanupTargetWrap"><label class="formfield" for="cleanupTarget">Keep this player record</label><select id="cleanupTarget"></select></div>
+<label class="formfield" for="cleanupNotes">Reason or notes (optional)</label><input id="cleanupNotes" maxlength="300" placeholder="e.g. Same player, alternate spelling">
+<button id="cleanupSave" class="btn primary" type="submit">Save cleanup decision</button></form>
+<h3>Existing cleanup decisions</h3><div id="cleanupDecisions"></div><p class="small muted">If two merged records overlap in the same season and metric, career averages omit the conflicting rows until reviewed. This prevents silent double-counting.</p></article><article class="panel" id="moderation" hidden><h2>Officer: Player identity approvals</h2><p class="muted small">Only approve a player when you know this account belongs to that person.</p><div id="claims"></div></article></div></div></main>
 <script>
 (function(){
 const BASE='https://nnlfzmdranazqujklkrm.supabase.co',KEY='sb_publishable_U3i_JSjunfsbtXEx8Wsuzw_LTQ9PPhb';
@@ -16,7 +23,51 @@ const $=id=>document.getElementById(id);
 const safe=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const equal=(a,b)=>String(a||'').trim().toLocaleLowerCase()===String(b||'').trim().toLocaleLowerCase();
 const client=window.supabase?.createClient(BASE,KEY);
-let career=null,profiles=[],claims=[],user=null,officer=false,chosen='',myProfile=null;
+let career=null,rawPlayers=[],cleanup=[],profiles=[],claims=[],user=null,officer=false,chosen='',myProfile=null;
+function prepareCleanedPlayers(){
+ const raw=rawPlayers.map(p=>({...p,seasons:(p.seasons||[]).map(x=>({...x}))}));
+ const rules=new Map(cleanup.map(x=>[String(x.source_name).trim().toLowerCase(),x]));
+ const original=new Map(raw.map(x=>[x.name.toLowerCase(),x]));
+ const canonical=name=>{
+  const seen=new Set();let cur=name;
+  while(true){
+   const key=cur.toLowerCase(),rule=rules.get(key);
+   if(seen.has(key)||!rule)return cur;
+   seen.add(key);
+   if(rule.action==='exclude')return null;
+   if(!rule.target_name||!original.has(rule.target_name.toLowerCase()))return cur;
+   cur=original.get(rule.target_name.toLowerCase()).name;
+  }
+ };
+ const grouped=new Map();
+ for(const p of raw){
+  const target=canonical(p.name);if(!target)continue;
+  const key=target.toLowerCase();
+  if(!grouped.has(key))grouped.set(key,{name:target,seasons:[],aliases:[],career:{},conflicts:[]});
+  const dest=grouped.get(key);
+  dest.seasons.push(...p.seasons);
+  if(!equal(p.name,target))dest.aliases.push(p.name);
+ }
+ const result=[...grouped.values()];
+ for(const p of result){
+  for(const metric of ['PPD','MPR']){
+   const matches=p.seasons.filter(r=>r.metric===metric);
+   const overlap=new Map();
+   for(const row of matches){const key=String(row.season);overlap.set(key,(overlap.get(key)||0)+1)}
+   const conflicts=[...overlap].filter(([_,count])=>count>1).map(([key])=>key);
+   if(conflicts.length)p.conflicts.push(metric+': '+conflicts.join(', '));
+   const valid=matches.filter(x=>!conflicts.includes(String(x.season)));
+   const games=valid.reduce((a,x)=>a+Number(x.games||0),0);
+   if(games)p.career[metric]={games,seasons:new Set(valid.map(x=>x.season)).size,
+     game_weighted_estimate:Math.round(valid.reduce((a,x)=>a+Number(x.average)*Number(x.games||0),0)/games*100)/100};
+  }
+ }
+ return result.sort((a,b)=>a.name.localeCompare(b.name));
+}
+function applyCleanup(){
+ career.players=prepareCleanedPlayers();career.player_count=career.players.length;
+ if(chosen&&!playerFor(chosen))chosen=career.players[0]?.name||'';
+}
 function info(message,error){$('status').textContent=message;$('status').className='notice'+(error?' error':'')}
 function photo(path){if(!path)return '';return BASE+'/storage/v1/object/public/league-avatars/'+path.split('/').map(encodeURIComponent).join('/')+'?t='+Date.now()}
 function head(name){return String(name||'?').split(/\s+/).map(x=>x[0]||'').slice(0,2).join('').toUpperCase()}
@@ -27,15 +78,16 @@ function avatar(p,name){return p?.avatar_path?'<img class="avatar" alt="Profile 
 async function load(){
  if(!client){info('Profile connection library unavailable. Reload the page.',true);return}
  try{
-  const [{data:u},archive,pres,clm]=await Promise.all([client.auth.getUser(),fetch('/api/careers').then(r=>r.json()),client.from('league_member_profiles').select('*'),client.from('league_player_claims').select('*')]);
+  const [{data:u},archive,pres,clm,clean]=await Promise.all([client.auth.getUser(),fetch('/api/careers').then(r=>r.json()),client.from('league_member_profiles').select('*'),client.from('league_player_claims').select('*'),client.from('league_player_cleanup').select('*')]);
   if(archive.error)throw Error(archive.error);
-  career=archive;user=u?.user||null;
+  career=archive;rawPlayers=archive.players||[];cleanup=clean.data||[];user=u?.user||null;
+  applyCleanup();
   profiles=pres.data||[];claims=clm.data||[];
-  if(pres.error||clm.error)info('Player statistics loaded, but account profiles are temporarily unavailable.',true);
+  if(pres.error||clm.error||clean.error)info('Some player profile or cleanup records are temporarily unavailable.',true);
   const mod=await client.from('board_moderators').select('user_id').eq('user_id',user?.id||'00000000-0000-0000-0000-000000000000').maybeSingle();
   officer=!!mod.data;
   myProfile=profiles.find(p=>p.user_id===user?.id)||null;
-  renderNames();renderCoverage();renderAccount();renderOfficer();
+  renderNames();renderCoverage();renderAccount();renderOfficer();renderCleanup();
   const url=new URL(location.href),requested=url.searchParams.get('player');
   chosen=playerFor(requested)?.name||career.players?.[0]?.name||'';
   renderPlayer();
@@ -64,6 +116,8 @@ function renderPlayer(){
  const linked=claims.some(c=>c.user_id===user?.id&&c.status==='approved'&&equal(c.player_name,p.name));
  $('view').innerHTML='<div class="row">'+avatar(pub,p.name)+'<div><h2>'+safe(pub?.display_name||p.name)+'</h2><p class="muted">'+safe(pub?.nickname||'Upper Deck darts player')+'</p><span class="tag">'+new Set(seasons.map(s=>s.season)).size+' recorded seasons</span></div></div>'+
  (pub?.bio?'<p>'+safe(pub.bio)+'</p>':'')+
+ (p.aliases?.length?'<p class="small muted">Combined historical names: '+p.aliases.map(safe).join(', ')+'</p>':'')+
+ (p.conflicts?.length?'<p class="notice error">Overlapping records need review: '+p.conflicts.map(safe).join('; ')+'. Conflicting season averages are excluded from career estimates.</p>':'')+
  ((pub?.favorite_double||pub?.darts_setup)?'<p class="muted small">'+(pub?.favorite_double?'Favorite double: '+safe(pub.favorite_double)+' · ':'')+(pub?.darts_setup?'Darts: '+safe(pub.darts_setup):'')+'</p>':'')+
  '<h3>Career snapshot</h3><div class="cardgrid"><div class="card"><span class="small">Career 01 PPD</span>'+measure(p,'PPD')+'</div><div class="card"><span class="small">Career Cricket MPR</span>'+measure(p,'MPR')+'</div><div class="card"><span class="small">Recorded 01 games</span><strong>'+(p.career?.PPD?.games||'—')+'</strong></div><div class="card"><span class="small">Recorded Cricket games</span><strong>'+(p.career?.MPR?.games||'—')+'</strong></div></div>'+
  '<p class="small muted">Career averages above are game-count-weighted estimates from published season averages. Exact dart-weighted PPD and mark-weighted MPR require underlying throws/marks, which these summaries may not supply.</p>'+
@@ -133,6 +187,57 @@ function renderOfficer(){
   renderOfficer();renderPlayer();renderNames();renderAccount();info('Player claim '+status+'.');
  }));
 }
+function renderCleanup(){
+ $('cleanupPanel').hidden=!officer;
+ if(!officer)return;
+ const names=[...rawPlayers].sort((a,b)=>a.name.localeCompare(b.name));
+ const opts=names.map(x=>'<option value="'+safe(x.name)+'">'+safe(x.name)+' ('+new Set(x.seasons.map(v=>v.season)).size+' seasons)</option>').join('');
+ const previous=$('cleanupSource').value,priorTarget=$('cleanupTarget').value;
+ $('cleanupSource').innerHTML='<option value="">Select historical player</option>'+opts;
+ $('cleanupTarget').innerHTML='<option value="">Select player to keep</option>'+opts;
+ if(names.some(x=>equal(x.name,previous)))$('cleanupSource').value=previous;
+ if(names.some(x=>equal(x.name,priorTarget)))$('cleanupTarget').value=priorTarget;
+ $('cleanupTargetWrap').hidden=$('cleanupAction').value!=='merge';
+ $('cleanupDecisions').innerHTML=cleanup.length?cleanup.map(x=>
+  '<div class="notice"><b>'+safe(x.source_name)+'</b> '+(x.action==='merge'?'→ '+safe(x.target_name):'· hidden')+
+  (x.notes?'<p class="small">'+safe(x.notes)+'</p>':'')+
+  '<button class="btn" data-undo="'+safe(x.source_name)+'" type="button">Undo</button></div>').join(''):'<p class="muted">No decisions saved yet.</p>';
+ $('cleanupDecisions').querySelectorAll('[data-undo]').forEach(btn=>btn.addEventListener('click',async()=>{
+  if(!confirm('Undo cleanup for '+btn.dataset.undo+'?'))return;
+  btn.disabled=true;
+  const {error}=await client.from('league_player_cleanup').delete().eq('source_name',btn.dataset.undo);
+  if(error){$('cleanupMessage').textContent=error.message;btn.disabled=false;return}
+  cleanup=cleanup.filter(x=>x.source_name!==btn.dataset.undo);
+  applyCleanup();renderCleanup();renderNames();renderPlayer();renderAccount();
+  $('cleanupMessage').textContent='Restored original player record.';
+ }));
+}
+$('cleanupAction').addEventListener('change',()=>{$('cleanupTargetWrap').hidden=$('cleanupAction').value!=='merge'});
+$('cleanupForm').addEventListener('submit',async e=>{
+ e.preventDefault();if(!officer)return;
+ const source=$('cleanupSource').value,action=$('cleanupAction').value,
+ target=action==='merge'?$('cleanupTarget').value:null,notes=$('cleanupNotes').value.trim();
+ const valid=new Set(rawPlayers.map(x=>x.name));
+ if(!valid.has(source)||action==='merge'&&(!valid.has(target)||equal(source,target))){
+  $('cleanupMessage').textContent='Choose distinct, existing source and destination player records.';return;
+ }
+ if(action==='merge'){
+  const mapping=new Map(cleanup.filter(x=>x.action==='merge'&&!equal(x.source_name,source)).map(x=>[x.source_name.toLowerCase(),x.target_name]));
+  let cur=target,seen=new Set([source.toLowerCase()]);
+  while(mapping.has(cur.toLowerCase())){if(seen.has(cur.toLowerCase()))break;seen.add(cur.toLowerCase());cur=mapping.get(cur.toLowerCase())}
+  if(seen.has(cur.toLowerCase())){$('cleanupMessage').textContent='This merge would create a cycle. Pick a different player.';return}
+ }
+ const label=action==='merge'?'Merge '+source+' into '+target:'Hide '+source+' from career profiles';
+ if(!confirm(label+'? The original report data will be preserved.'))return;
+ const save=$('cleanupSave');save.disabled=true;$('cleanupMessage').textContent='Saving…';
+ const row={source_name:source,action,target_name:target,notes,updated_by:user.id,updated_at:new Date().toISOString()};
+ const {error}=await client.from('league_player_cleanup').upsert(row,{onConflict:'source_name'});
+ if(error){$('cleanupMessage').textContent='Could not save: '+error.message;save.disabled=false;return}
+ cleanup=cleanup.filter(x=>!equal(x.source_name,source)).concat(row);
+ applyCleanup();renderCleanup();renderNames();renderPlayer();renderAccount();
+ $('cleanupMessage').textContent='Saved. Public career directory updated; the underlying LeagueLeader records remain unchanged.';
+ save.disabled=false;
+});
 $('search').addEventListener('input',renderNames);
 load();
 })();
