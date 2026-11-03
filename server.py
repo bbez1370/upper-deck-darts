@@ -150,6 +150,111 @@ def debug():return jsonify({'standings':report_diagnostic(STANDINGS),'games':rep
 
 # Additional public LeagueLeader report for player-level analytics.
 PLAYER_DETAIL='https://leagueleader.net/sharedreport.php?operatorid=497&code=d512d685-0570-4906-ad06-8c03b903b500'
+
+player_games_cache={'at':0,'payload':None}
+
+def get_individual_games(rr):
+    """Read per-player game rows from the Location Stats report.
+    IMPORTANT: LeagueLeader prints week 0 on individual results, so these
+    rows do not have verified calendar dates or schedule-week assignments.
+    """
+    section=None
+    headers={}
+    team=None
+    player=None
+    results={}
+    scanned=0
+    for row in rr:
+        cells=[str(c).strip() for c in row]
+        lower=[v.lower() for v in cells]
+        if len(lower)>=6 and lower[2]=='week' and lower[3] in ('ppd','mpr') and 'games' in lower and 'wins' in lower:
+            section=lower[3]
+            headers={name:i for i,name in enumerate(lower) if name}
+            team=None
+            player=None
+            continue
+        if not section:
+            continue
+        if cells[0]=='Team:':
+            team=cells[1] if len(cells)>1 else None
+            player=None
+            continue
+        if len(cells)==2 and not cells[0] and cells[1] and team:
+            player=cells[1]
+            continue
+        if not team or not player:
+            continue
+        def field(name):
+            i=headers.get(name)
+            return cells[i] if i is not None and i<len(cells) else ''
+        if field('week')=='Summary:':
+            continue
+        n=_number(field(section))
+        games=_number(field('games'))
+        wins=_number(field('wins'))
+        if n is None or games!=1 or wins not in (0,1):
+            continue
+        # A single genuine one-game row; never interpret a summary as a game.
+        scanned+=1
+        key=(norm(player),norm(team))
+        item=results.setdefault(key,{'name':player,'team':team,'games':[]})
+        achievements={}
+        for label,i in headers.items():
+            if label in ('week','ppd','mpr','games','wins','game',''):
+                continue
+            if i>=len(cells):continue
+            v=_number(cells[i])
+            if v is not None and v>0 and int(v)==v:
+                achievements[label.upper()]=int(v)
+        item['games'].append({
+          'metric':section.upper(),'rate':round(n,2),'win':bool(wins),
+          'game':field('game')[:40],
+          'achievements':achievements
+        })
+    people=[]
+    for item in results.values():
+        item['summary']={}
+        for typ in ('PPD','MPR'):
+            group=[g for g in item['games'] if g['metric']==typ]
+            if not group:continue
+            values=[g['rate'] for g in group]
+            count=len(values)
+            avg=sum(values)/count
+            spread=(sum((v-avg)**2 for v in values)/count)**0.5
+            totals={}
+            for g in group:
+                for label,v in g['achievements'].items():
+                    totals[label]=totals.get(label,0)+v
+            item['summary'][typ]={
+              'games':count,'average_game':round(avg,2),
+              'best':max(values),'worst':min(values),'std_dev':round(spread,2),
+              'wins':sum(1 for g in group if g['win']),
+              'achievements':totals
+            }
+        people.append(item)
+    people.sort(key=lambda p:(p['team'].lower(),p['name'].lower()))
+    return {'source':'LeagueLeader Location Stats Report',
+       'date_verified':False,'week_verified':False,
+       'note':'Individual rows have Week 0 and no date. Game rows are displayed in report order only, not assigned to a league week.',
+       'player_count':len(people),'game_count':scanned,'players':people}
+
+@app.route('/api/player-games')
+def individual_game_stats():
+    """Standalone optional statistics API. A failure cannot break /api/live."""
+    try:
+        if player_games_cache['payload'] and time.time()-player_games_cache['at']<300:
+            return jsonify(player_games_cache['payload'])
+        _,soup=fetch(PLAYER_DETAIL)
+        result=get_individual_games(rows(soup))
+        if result['game_count']<20 or result['player_count']<5:
+            raise ValueError('Unrecognized player game table layout; no fabricated records returned.')
+        result['updated']=datetime.now().astimezone().isoformat(timespec='seconds')
+        player_games_cache.update(at=time.time(),payload=result)
+        return jsonify(result)
+    except Exception as error:
+        return jsonify({'error':str(error)[:200],
+                        'stale':player_games_cache['payload']}),503
+
 @app.route('/api/player-report-inspect')
 def player_report_inspect():
     """Return bounded table samples to verify the public report schema before using player-level statistics."""
