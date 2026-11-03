@@ -408,21 +408,37 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const counts={};for(const game of p.games){for(const [key,val] of Object.entries(game.achievements||{}))counts[key]=(counts[key]||0)+val}
       const achievements=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
       const achText=achievements.length?achievements.map(([key,val])=>'<span class="pill">'+safe(key)+' × '+val+'</span>').join(' '):'<span class="muted">No scoring achievements recorded in these rows.</span>';
+
+      const weeks=p.weekly||[];
+      const chart=(metric,label)=>{
+        const series=weeks.filter(w=>w[metric]?.games).map(w=>({week:w.week,mean:w[metric].average,n:w[metric].games}));
+        if(!series.length)return '<p class="muted">No unambiguous '+label+' week assignments yet.</p>';
+        const max=Math.max(1,...series.map(x=>x.mean));
+        return '<h4>'+label+' game-average trend (inferred weeks)</h4><div class="atrend">'+series.map(x=>
+          '<div><span>W'+x.week+'</span><div class="abar"><i style="width:'+(100*x.mean/max).toFixed(1)+'%"></i></div><b>'+x.mean.toFixed(2)+'</b></div>'
+        ).join('')+'</div><p class="mini muted">Equal-weight mean of '+label+' game rows; bars rescaled to the maximum shown.</p>';
+      };
+      const assigned=p.games.filter(g=>g.inferred_week!=null).length;
+      const uncertain=p.games.filter(g=>g.candidate_weeks?.length).length;
       const list=(p.games||[]).map((g,i)=>row([
-        String(i+1),
-        safe(g.game||g.metric),
-        safe(g.metric),
-        Number(g.rate).toFixed(2),
-        g.win?'Won':'Lost',
+        String(i+1),safe(g.game||g.metric),safe(g.metric),Number(g.rate).toFixed(2),g.win?'Won':'Lost',
+        g.inferred_week!=null?'Week '+g.inferred_week+' · '+safe(g.inferred_date||''):
+          g.candidate_weeks?.length?'Possible weeks: '+g.candidate_weeks.join(', '):'Not assigned',
         safe(Object.entries(g.achievements||{}).map(([k,v])=>k+' ×'+v).join(', ')||'—')
       ]));
+      const benchmark=(norm(p.name)==='joebanker'&&payload.joe_last_01_check)?
+          '<div class="anote"><b>Joe Banker cross-check:</b> newest recorded 01 game '+safe(payload.joe_last_01_check.last_ppd)+' PPD. '+
+          (payload.joe_last_01_check.matches_user_reported_12_82?'Matches your reported 12.82 PPD.':'Does not match your reported 12.82 PPD. Review the sequence.')+
+          ' Week: '+safe(payload.joe_last_01_check.inferred_week||'not uniquely resolved')+'.</div>':'';
       root.innerHTML=createSelect()+
-        '<div class="anote">Game-by-game results are genuine, but each game shows Week 0 in LeagueLeader. The row numbers below mean report order, <b>not</b> chronological week or date.</div>'+
-        summary+summary2+
+        '<div class="anote">Individual LeagueLeader rows display Week 0. Using the report-order clue, we compare each ordered player game with dated team results, matching game format and win/loss. Dates are <b>inferred</b> and only displayed when every compatible alignment agrees. These are not verified timestamps.</div>'+
+        benchmark+summary+summary2+
+        '<h3>Inferred weekly trends</h3><p class="mini muted">'+assigned+' of '+p.games.length+' individual games have a uniquely inferred week; '+uncertain+' have multiple possibilities. Unmatched games are omitted from weekly averages.</p>'+
+        chart("PPD","01 PPD")+chart("MPR","Cricket MPR")+
         '<h3>Scoring achievements</h3><p>'+achText+'</p>'+
         '<h3>Individual game results · '+safe(p.name)+' ('+p.games.length+' games)</h3>'+
-        table(["Report row #","Game type","Metric","PPD/MPR","Result","Highlights"],list)+
-        '<p class="mini muted">PPD and MPR are separate measures and are never combined. Averages here are arithmetic averages of one-game rows, not a reconstruction of season dart-weighted averages.</p>';
+        table(["Report row #","Game type","Metric","PPD/MPR","Result","Week inference","Highlights"],list)+
+        '<p class="mini muted">PPD and MPR are separate measures. The alignment assumes newest individual results appear last in each section; game averages weight each game equally.</p>';
       document.getElementById("individualPlayerSelect")?.addEventListener("change",e=>{selectedIndividual=e.target.value;showIndividualGames()});
     }catch(e){if(document.getElementById("individualGamePanel"))document.getElementById("individualGamePanel").innerHTML='<div class="notice">Individual game report unavailable: '+safe(e.message)+'. Official standings are unaffected.</div>'}
   }
@@ -441,7 +457,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
         statCard("Highest single Cricket MPR",m?.summary.MPR.best??"—",m?.name||"")+
         statCard("Individual games parsed",payload.game_count,"From player game breakdown")+
         statCard("Players with game records",payload.player_count,"Report total")
-      )+'<p class="mini muted">Game records have no verified calendar date. Confirmed substitute exclusions are applied before selecting leaders.</p>';
+      )+'<p class="mini muted">Weeks are inferred only when individual and team results agree. Confirmed substitute exclusions are applied.</p>';
     }catch(e){if(document.getElementById("individualRecords"))document.getElementById("individualRecords").textContent="Detailed game records unavailable."}
   }
   function renderEligibility(){
