@@ -270,8 +270,8 @@ def assign_candidate_weeks(result, matches):
                 continue
             def compatible(i,j):
                 game=seq[i];slot=options[j]
-                game_type=norm(game.get('game',''))
-                slot_type=norm(slot['game'])
+                game_type=re.sub(r'[^a-z0-9]','',str(game.get('game','')).lower())
+                slot_type=re.sub(r'[^a-z0-9]','',str(slot['game']).lower())
                 return (game['win']==slot['win'] and game_type==slot_type)
             # Forward: first i player games can fit within first j team slots.
             forward=[[False]*(n+1) for _ in range(m+1)]
