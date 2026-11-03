@@ -3,6 +3,7 @@ from flask import Flask, jsonify, send_from_directory
 from bs4 import BeautifulSoup
 from datetime import datetime
 import requests, re, json, pathlib, time
+from concurrent.futures import ThreadPoolExecutor
 
 ROOT=pathlib.Path(__file__).parent
 SCHEDULE=json.loads((ROOT/'schedule.json').read_text())
@@ -371,16 +372,25 @@ def _historical_label(soup,rr):
     if seasons:return seasons[0]+' (season unverified)'
     return title[:95] or 'Unlabeled historical report'
 
+def _fetch_archived_safely(source):
+    try:return fetch(source['url'])
+    except Exception as error:return error
+
 def historical_careers():
     if career_cache['payload'] and time.time()-career_cache['at']<1800:
         return career_cache['payload']
     sources=json.loads((ROOT/'historical_sources.json').read_text())
     entries=[];records={};seen_season_rows=set()
+    # Load the five independent reports concurrently to avoid long serial waits.
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        fetched=list(pool.map(_fetch_archived_safely,sources))
     for number,source in enumerate(sources,1):
         url=source['url']
         record={'report_number':number,'url':url,'status':'unavailable','season':None}
         try:
-            _,soup=fetch(url)
+            fetched_result=fetched[number-1]
+            if isinstance(fetched_result,Exception):raise fetched_result
+            _,soup=fetched_result
             rr=rows(soup)
             label=_historical_label(soup,rr)
             teams,p01,pcr=get_standings(rr)
