@@ -139,6 +139,7 @@ function renderPlayer(){
  (pub?.bio?'<p>'+safe(pub.bio)+'</p>':'')+
  (p.aliases?.length?'<p class="small muted">Combined historical names: '+p.aliases.map(safe).join(', ')+'</p>':'')+
  (p.conflicts?.length?'<p class="notice error">Overlapping records need review: '+p.conflicts.map(safe).join('; ')+'. Conflicting season averages are excluded from career estimates.</p>':'')+
+ (p.combinedGroups?.length?'<p class="notice">'+p.combinedGroups.length+' same-season performance group(s) combined from verified aliases. Game-weighted estimates include all their recorded games.</p>':'')+
  ((pub?.favorite_double||pub?.darts_setup)?'<p class="muted small">'+(pub?.favorite_double?'Favorite double: '+safe(pub.favorite_double)+' · ':'')+(pub?.darts_setup?'Darts: '+safe(pub.darts_setup):'')+'</p>':'')+
  '<h3>Career snapshot</h3><div class="cardgrid"><div class="card"><span class="small">Career 01 PPD</span>'+measure(p,'PPD')+'</div><div class="card"><span class="small">Career Cricket MPR</span>'+measure(p,'MPR')+'</div><div class="card"><span class="small">Recorded 01 games</span><strong>'+(p.career?.PPD?.games||'—')+'</strong></div><div class="card"><span class="small">Recorded Cricket games</span><strong>'+(p.career?.MPR?.games||'—')+'</strong></div></div>'+
  '<p class="small muted">Career averages above are game-count-weighted estimates from published season averages. Exact dart-weighted PPD and mark-weighted MPR require underlying throws/marks, which these summaries may not supply.</p>'+
@@ -218,6 +219,8 @@ function renderCareerAudit(){
  const people=career?.players||[];
  const merged=people.filter(p=>p.aliases?.length);
  const conflicts=people.filter(p=>p.conflicts?.length);
+ const combined=people.flatMap(p=>(p.combinedGroups||[]).map(g=>({...g,player:p.name})));
+
  const rawNames=new Set(rawPlayers.map(p=>p.name.toLowerCase()));
  const missingRules=cleanup.filter(r=>!rawNames.has(r.source_name.toLowerCase())||
    r.action==='merge'&&!rawNames.has(String(r.target_name||'').toLowerCase()));
@@ -225,6 +228,7 @@ function renderCareerAudit(){
  const summary='<div class="cardgrid">'+
   '<div class="card"><span class="small">Historical reports parsed</span><strong>'+reports.filter(r=>r.status==='parsed').length+' / '+reports.length+'</strong></div>'+
   '<div class="card"><span class="small">Merged career profiles</span><strong>'+merged.length+'</strong></div>'+
+  '<div class="card"><span class="small">Approved season combinations</span><strong>'+combined.length+'</strong></div>'+
   '<div class="card"><span class="small">Unresolved overlaps</span><strong>'+conflicts.length+'</strong></div>'+
   '<div class="card"><span class="small">Source-row ambiguities</span><strong>'+sourceAmbiguities.reduce((n,r)=>n+fmt(r.conflicting_player_rows),0)+'</strong></div></div>';
  const block=(title,rows)=>'<h3>'+title+'</h3>'+(rows.length?rows.join(''):'<p class="small muted">No issues detected in the records currently loaded.</p>');
@@ -234,26 +238,16 @@ function renderCareerAudit(){
   (r.repeated_identical_rows?' · '+r.repeated_identical_rows+' exact repeats detected':'')+'</p>'));
  const mergeBlock=block('Profiles combined by your decisions',merged.map(p=>'<div class="notice small"><b>'+safe(p.name)+'</b> ← '+p.aliases.map(safe).join(', ')+'</div>'));
 
- const outstanding=conflicts.flatMap(p=>p.conflicts.flatMap(c=>{
-   const metric=c.slice(0,c.indexOf(':')).trim();
-   return c.slice(c.indexOf(':')+1).split(',').map(season=>{
-      season=season.trim();
-      return {player:p.name,season,metric,rows:p.seasons.filter(r=>r.season===season&&r.metric===metric)};
-   });
- }));
- const conflictBlock=block('Overlapping records awaiting your review',outstanding.map((v,i)=>
-  '<div class="notice error"><b>'+safe(v.player)+'</b> · '+safe(v.season)+' · '+safe(v.metric)+
-  '<p class="small">Compare these LeagueLeader records and choose only the correct one. No selection is automatic.</p>'+
-  '<div class="tablebox"><table><thead><tr><th>Original player</th><th>Team</th><th>Average</th><th>Games</th><th>Report</th></tr></thead><tbody>'+
-  v.rows.map(r=>'<tr><td>'+safe(r.source_player)+'</td><td>'+safe(r.team)+'</td><td>'+safe(r.average)+'</td><td>'+safe(r.games)+'</td><td>'+safe(r.report_number)+'</td></tr>').join('')+
-  '</tbody></table></div><label class="formfield">Verified record to keep</label>'+
-  '<select data-overlap-choice="'+i+'"><option value="">Select a source record</option>'+
-  v.rows.map((r,j)=>'<option value="'+j+'">'+safe(r.source_player)+' / '+safe(r.team)+' / '+safe(r.average)+' / '+safe(r.games)+' games</option>').join('')+
-  '</select><button class="btn" type="button" data-overlap-save="'+i+'">Keep selected record</button></div>'));
- const resolvedBlock='<h3>Reviewed overlaps</h3>'+
- (resolutions.length?resolutions.map((r,i)=>'<div class="notice small">'+safe(r.canonical_name)+' · '+safe(r.season)+' · '+safe(r.metric)+
- ' → '+safe(r.keep_source_name)+' <button type="button" class="btn" data-overlap-undo="'+i+'">Undo</button></div>').join(''):
- '<p class="muted small">No overlaps resolved yet.</p>');
+
+ const combinedBlock=block('Combined performances from your approved player merges',
+  combined.map(g=>'<div class="notice"><b>'+safe(g.player)+'</b> · '+safe(g.season)+' · '+safe(g.metric)+
+   '<p class="small">Combined '+g.games+' games · estimated '+Number(g.game_weighted_estimate).toFixed(2)+' '+safe(g.metric)+
+   '. Each source row is retained below.</p><div class="tablebox"><table><thead><tr><th>Original name</th><th>Team</th><th>Average</th><th>Games</th><th>Report</th></tr></thead><tbody>'+
+   g.rows.map(r=>'<tr><td>'+safe(r.source_player)+'</td><td>'+safe(r.team)+'</td><td>'+safe(r.average)+'</td><td>'+safe(r.games)+'</td><td>'+safe(r.report_number)+'</td></tr>').join('')+
+   '</tbody></table></div></div>'));
+ const conflictBlock=block('Unresolved source duplicates needing manual review',
+  conflicts.map(p=>'<div class="notice error"><b>'+safe(p.name)+'</b>: '+p.conflicts.map(safe).join('; ')+
+   '<p class="small">One or more records have the same original source name within a season. These are excluded from the career estimate to avoid double-counting.</p></div>'));
  const rowBlock=block('Conflicting player rows within source reports',sourceAmbiguities.flatMap(r=>
   (r.ambiguous_examples||[]).map(x=>'<div class="notice error small">'+safe(r.season||'Unlabeled')+' · '+safe(x.name)+' · '+safe(x.metric)+
     ' ('+(x.distinct_rows?.length||0)+' distinct rows; omitted from career estimate)</div>')));
@@ -276,32 +270,8 @@ function renderCareerAudit(){
  const status=unavailable.length||conflicts.length||sourceAmbiguities.length||missingRules.length?
   '<p class="notice error">Some career records are incomplete or excluded for review. Do not publish a definitive all-time leaderboard yet.</p>':
   '<p class="notice">No overlaps or source ambiguities detected in the data currently available. This does not independently verify all league averages.</p>';
- container.innerHTML=summary+status+sourceBlock+mergeBlock+conflictBlock+resolvedBlock+rowBlock+mapBlock+leaderboardPreview+
+ container.innerHTML=summary+status+sourceBlock+mergeBlock+combinedBlock+conflictBlock+rowBlock+mapBlock+leaderboardPreview+
    '<p class="muted small">The original LeagueLeader reports remain unchanged. Career averages are estimates weighted by game counts; exact career PPD/MPR requires dart and mark totals. Hidden names are not displayed here unless their cleanup rule needs attention.</p>';
- container.querySelectorAll('[data-overlap-save]').forEach(btn=>btn.addEventListener('click',async()=>{
-  const i=Number(btn.dataset.overlapSave),group=outstanding[i];
-  const choice=container.querySelector('[data-overlap-choice="'+i+'"]');
-  if(!group||!choice||choice.value===''){info('Choose one verified row first.',true);return}
-  const row=group.rows[Number(choice.value)];
-  if(!row||!confirm('Retain '+row.source_player+' / '+row.team+' / '+row.games+' games for '+group.player+' in '+group.season+'?'))return;
-  btn.disabled=true;
-  const d={canonical_name:group.player,season:group.season,metric:group.metric,
-    keep_source_name:row.source_player,keep_report_number:row.report_number,
-    updated_by:user.id,updated_at:new Date().toISOString()};
-  const {error}=await client.from('league_career_overlap_resolutions').upsert(d,{onConflict:'canonical_name,season,metric'});
-  if(error){info('Save failed: '+error.message,true);btn.disabled=false;return}
-  resolutions=resolutions.filter(x=>!(equal(x.canonical_name,d.canonical_name)&&x.season===d.season&&x.metric===d.metric)).concat(d);
-  applyCleanup();renderNames();renderPlayer();renderCareerAudit();info('Verified record saved, career estimate updated.');
- }));
- container.querySelectorAll('[data-overlap-undo]').forEach(btn=>btn.addEventListener('click',async()=>{
-  const d=resolutions[Number(btn.dataset.overlapUndo)];
-  if(!d||!confirm('Undo the selected record for '+d.canonical_name+'?'))return;
-  btn.disabled=true;
-  const {error}=await client.from('league_career_overlap_resolutions').delete().eq('canonical_name',d.canonical_name).eq('season',d.season).eq('metric',d.metric);
-  if(error){info(error.message,true);btn.disabled=false;return}
-  resolutions=resolutions.filter(x=>x!==d);
-  applyCleanup();renderNames();renderPlayer();renderCareerAudit();info('Overlap resolution undone.');
- }));
 
 }
 function renderCleanup(){
