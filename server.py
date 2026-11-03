@@ -353,6 +353,101 @@ def assign_candidate_weeks(result, matches):
     result['week_verified']=False
     return result
 
+
+# Historical league archives: only supplied public report URLs are used.
+career_cache={'at':0,'payload':None}
+
+def _historical_label(soup,rr):
+    title=soup.title.get_text(' ',strip=True) if soup.title else ''
+    head=' '.join(str(v) for row in rr[:24] for v in row)[:1500]
+    combined=title+' '+head
+    seasons=re.findall(r'20(?:2[0-9]|3[0-9])',combined)
+    if len(seasons)>=2 and 0<int(seasons[1])-int(seasons[0])<=2:
+        return seasons[0]+'–'+seasons[1][-2:]
+    if seasons:return seasons[0]+' (season unverified)'
+    return title[:95] or 'Unlabeled historical report'
+
+def historical_careers():
+    if career_cache['payload'] and time.time()-career_cache['at']<1800:
+        return career_cache['payload']
+    sources=json.loads((ROOT/'historical_sources.json').read_text())
+    entries=[];records={};seen_season_rows=set()
+    for number,source in enumerate(sources,1):
+        url=source['url']
+        record={'report_number':number,'url':url,'status':'unavailable','season':None}
+        try:
+            _,soup=fetch(url)
+            rr=rows(soup)
+            label=_historical_label(soup,rr)
+            teams,p01,pcr=get_standings(rr)
+            record.update(season=label,rows=len(rr),players_01=len(p01),players_cricket=len(pcr))
+            if not p01 and not pcr:
+                record['status']='unrecognized report layout'
+            else:
+                record['status']='parsed'
+                # Deduplicate repeated source snapshots of the same player's season.
+                # Exact normalized player names only; never fuzzy-merge two people.
+                for metric,arr in [('PPD',p01),('MPR',pcr)]:
+                    for p in arr:
+                        games=int(p['games'])
+                        if games<=0:continue
+                        avg=float(p['ppd'] if metric=='PPD' else p['mpr'])
+                        name=p['name'].strip()
+                        key=norm(name)
+                        if not key:continue
+                        unique=(key,label,metric)
+                        if unique in seen_season_rows:
+                            record['duplicate_rows_omitted']=record.get('duplicate_rows_omitted',0)+1
+                            continue
+                        seen_season_rows.add(unique)
+                        item=records.setdefault(key,{'name':name,'seasons':[]})
+                        item['seasons'].append({'season':label,'metric':metric,'average':avg,
+                                                 'games':games,'team':p['team'],'report_number':number})
+        except Exception as error:
+            record['error']=str(error)[:130]
+        entries.append(record)
+    current={'status':'unavailable','season':'2026–27'}
+    try:
+        payload=refresh()
+        current['status']='parsed'
+        for metric,arr in [('PPD',payload['players']),('MPR',payload['cricket'])]:
+            for p in arr:
+                name=p['name'].strip();key=norm(name)
+                if not key or int(p['games'])<=0:continue
+                entry=records.setdefault(key,{'name':name,'seasons':[]})
+                unique=(key,'2026–27',metric)
+                if unique not in seen_season_rows:
+                    seen_season_rows.add(unique)
+                    entry['seasons'].append({'season':'2026–27','metric':metric,
+                        'average':float(p['ppd'] if metric=='PPD' else p['mpr']),
+                        'games':int(p['games']),'team':p['team'],'report_number':0})
+    except Exception as error:
+        current['error']=str(error)[:130]
+    players=[]
+    for p in records.values():
+        career={}
+        for metric in ('PPD','MPR'):
+            data=[row for row in p['seasons'] if row['metric']==metric]
+            games=sum(row['games'] for row in data)
+            if games:
+                career[metric]={'game_weighted_estimate':round(sum(row['average']*row['games'] for row in data)/games,2),
+                    'games':games,'seasons':len(set(row['season'] for row in data))}
+        p['career']=career
+        p['seasons'].sort(key=lambda row:(row['season'],row['metric']))
+        players.append(p)
+    players.sort(key=lambda p:p['name'].lower())
+    output={'updated':datetime.now().astimezone().isoformat(timespec='seconds'),
+        'reports':entries,'current':current,'players':players,'player_count':len(players),
+        'method':'Season PPD/MPR values weighted by games as an estimate; exact career averages require dart/mark totals.',
+        'warnings':['Historical report labels are inferred from report content, not independently verified.','Equal names with changed spellings are not automatically merged.','Repeated report snapshots with identical season labels are deduplicated.']}
+    career_cache.update(at=time.time(),payload=output)
+    return output
+
+@app.route('/api/careers')
+def careers():
+    try:return jsonify(historical_careers())
+    except Exception as error:return jsonify({'error':str(error)[:200]}),503
+
 @app.route('/api/player-games')
 def individual_game_stats():
     """Standalone optional statistics API. A failure cannot break /api/live."""
