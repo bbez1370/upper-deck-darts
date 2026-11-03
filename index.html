@@ -170,8 +170,8 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
     }).sort((a,b)=>b.score-a.score);
   }
   const metric=(label,value,note)=>`<div class="ametric"><small>${safe(label)}</small><strong>${safe(value)}</strong><small>${safe(note)}</small></div>`;
-  const weekPick=id=>`<select class="form" id="${id}">${schedule.map(w=>`<option value="${w.num}" ${String($a(id)?.value||"")===String(w.num)?"selected":""}>Week ${w.num} · ${w.date}</option>`).join("")}</select>`;
-  const teamPick=id=>`<select class="form" id="${id}">${allTeams().map(n=>`<option value="${safe(n)}" ${norm($a(id)?.value||"")===norm(n)?"selected":""}>${safe(n)}</option>`).join("")}</select>`;
+  const weekPick=id=>`<select class="form" id="${id}">${schedule.map(w=>`<option value="${w.num}" ${String($a(id)?.value||currentWeek().num)===String(w.num)?"selected":""}>Week ${w.num} · ${w.date}</option>`).join("")}</select>`;
+  const teamPick=id=>`<select class="form" id="${id}">${allTeams().map(n=>`<option value="${safe(n)}" ${norm($a(id)?.value||(id==="h2hB"?allTeams()[1]:allTeams()[0]))===norm(n)?"selected":""}>${safe(n)}</option>`).join("")}</select>`;
   const cards=(s)=>`<div class="ametrics">${s}</div>`;
   const table=(head,rows)=>`<div class="table-scroll"><table><thead><tr>${head.map(x=>`<th>${safe(x)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
   const row=cells=>`<tr>${cells.map(c=>`<td>${c}</td>`).join("")}</tr>`;
