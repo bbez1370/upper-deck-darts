@@ -3,7 +3,7 @@
 @media(max-width:740px){.shell{padding:0 12px 25px}.mast-inner{padding:23px 14px}.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.metric{padding:11px}.metric strong{font-size:21px}.pane{padding:14px}.topline{align-items:start;flex-direction:column}.match .teamline{font-size:14px}.score{font-size:18px}}
 .boardgrid{display:grid;grid-template-columns:1fr 300px;gap:16px}.boardbox{border:1px solid #34505a;border-radius:14px;background:#101d29;padding:16px;margin:12px 0}.boardbox input,.boardbox textarea,.boardbox select{width:100%;margin:6px 0 12px}.boardbox label{display:block;font-size:12px;color:#c5dbd5}.bpost{padding:14px 0;border-bottom:1px solid #304651}.bpost p{white-space:pre-wrap;overflow-wrap:anywhere}.bpin{border-left:4px solid #64d8a3;padding:12px;background:#142b2b;border-radius:10px}.btools{display:flex;gap:8px;flex-wrap:wrap}.bhidden{display:none!important}.bclick{margin:4px;padding:5px 8px}.berror{color:#ffb4b4}.bmeta{color:#a6bac0;font-size:12px}@media(max-width:750px){.boardgrid{grid-template-columns:1fr}}.ametrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:15px 0}.ametric{padding:14px;background:#102f2b;border:1px solid #285746;border-radius:12px;min-width:0}.ametric strong{display:block;font-size:22px;color:#9ef1c5;overflow-wrap:anywhere;margin:7px 0}.ametric small{display:block;font-size:11px;color:#b4ccc4}.anote{margin:16px 0;padding:12px;background:#152b2c;border-left:3px solid #6bdaa7;color:#c5d9d6}.atrend>div{display:grid;grid-template-columns:45px 1fr 45px;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #2b4048}.abar,.aprob{height:12px;background:#34444c;border-radius:9px;overflow:hidden}.abar i,.aprob i{display:block;height:100%;background:#55ce98;border-radius:9px}.arecap,.apred{background:#101e2a;border:1px solid #304750;border-radius:12px;padding:13px;margin:9px 0}.aprob{height:16px;margin:12px 0}.atabs{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}.atabs button{padding:8px 11px;border:1px solid #39525e;background:#142733;color:#dae9e8;border-radius:9px}.atabs button.active{background:#55d59d;color:#06221a}@media(max-width:800px){.ametrics{grid-template-columns:repeat(2,minmax(0,1fr))}}</style><script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script></head><body>
 <header class="mast"><div class="mast-inner"><div class="topline"><div class="eyebrow">🎯 Tyson's Upper Deck · Wednesday Night Darts</div><div id="syncStatus" class="status" role="status" aria-live="polite">Connecting…</div></div><h1>Upper Deck Dart League</h1><p>2026–27 season · 18 teams · 23 weeks · 5 boards</p><div class="row" style="margin-top:13px"><button class="btn" id="refreshButton">↻ Refresh stats</button><span class="mini muted">Automatic refresh every 5 minutes</span></div></div></header>
-<main class="shell"><nav class="nav" aria-label="Main navigation"><button type="button" class="active" data-view="home">Home</button><button type="button" data-view="standings">Standings</button><button type="button" data-view="players">Player Stats</button><button type="button" data-view="teams">Team Profiles</button><button type="button" data-view="schedule">Schedule & Results</button><button type="button" id="analyticsNav">Analytics Center</button><button type="button" data-view="community">Community</button></nav>
+<main class="shell"><nav class="nav" aria-label="Main navigation"><button type="button" class="active" data-view="home">Home</button><button type="button" data-view="standings">Standings</button><button type="button" data-view="players">Player Stats</button><button type="button" data-view="teams">Team Profiles</button><button type="button" data-view="schedule">Schedule & Results</button><button type="button" id="analyticsNav" data-view="analytics">Analytics Center</button><button type="button" data-view="community">Community</button></nav>
 <div id="syncError" hidden class="notice" role="alert"></div>
 <section id="home" class="active"><div class="metrics"><div class="metric"><span>Teams</span><strong id="homeTeamCount">18</strong></div><div class="metric"><span>Player records</span><strong id="homePlayerCount">—</strong></div><div class="metric"><span>Completed matches</span><strong id="homeMatchCount">—</strong></div></div>
 <div class="grid"><article class="pane"><div class="eyebrow">Next scheduled league night</div><h2 id="homeWeek">Loading schedule</h2><p class="muted" id="homeWeekSub"></p><div id="homeMatchList"></div><p><button class="btn primary" onclick="view('schedule')">Browse schedule →</button></p></article><article class="pane"><div class="eyebrow">Standings snapshot from live import</div><h2>League leaders</h2><div id="homeLeaders"><p>Loading…</p></div><p><button class="btn" onclick="view('standings')">View all 18 teams →</button></p></article></div>
@@ -27,7 +27,7 @@ const mkey=(a,b)=>[normalize(a),normalize(b)].sort().join('|');
 let data=null,updatedAt=null,loadedOnce=false,selectedStat='ppd';
 let activePlayer='',activeTeam='';
 // Enter CONFIRMED substitute names here; currently no names have been provided.
-const substituteNames=[];const isSub=n=>substituteNames.some(x=>normalize(x)===normalize(n));
+const substituteNames=[];const isSub=n=>substituteNames.some(x=>normalize(x)===normalize(n))||(window.analyticsExcludedNames||[]).some(x=>normalize(x)===normalize(n));
 const fallbackMessage='Live standings are temporarily unavailable. Use the official LeagueLeader reports linked below.';
 const nowLocal=()=>{const dt=new Date();return new Date(dt.getFullYear(),dt.getMonth(),dt.getDate());};
 function dateLocal(s){const [month,day,year]=s.split('/').map(Number);return new Date(year,month-1,day);}
@@ -43,7 +43,7 @@ function renderHome(){
  const teams=[...(data.teams||[])].sort((a,b)=>b.winPct-a.winPct||b.wins-a.wins);
  $('homeLeaders').innerHTML=teams.slice(0,5).map((t,i)=>`<div class="row between" style="padding:8px 0;border-bottom:1px solid #273d43"><span><b>${i+1}.</b> ${htmlEscape(t.name)}</span><strong>${t.wins}–${t.games-t.wins}</strong></div>`).join('');
  $('homeTeamCount').textContent=teams.length||'—';$('homePlayerCount').textContent=(data.players||[]).length||'—';$('homeMatchCount').textContent=(data.matches||[]).length||'—';
- const topPPD=[...(data.players||[])].sort((a,b)=>b.ppd-a.ppd)[0],topMPR=[...(data.cricket||[])].sort((a,b)=>b.mpr-a.mpr)[0];
+ const topPPD=[...(data.players||[])].filter(p=>!isSub(p.name)).sort((a,b)=>b.ppd-a.ppd)[0],topMPR=[...(data.cricket||[])].filter(p=>!isSub(p.name)).sort((a,b)=>b.mpr-a.mpr)[0];
  $('homePlayerPreview').innerHTML=(topPPD?`<p><b>01 PPD:</b> ${htmlEscape(topPPD.name)} · ${Number(topPPD.ppd).toFixed(2)}</p>`:'')+(topMPR?`<p><b>Cricket MPR:</b> ${htmlEscape(topMPR.name)} · ${Number(topMPR.mpr).toFixed(2)}</p>`:'');
 }
 function renderStandings(){
@@ -192,6 +192,9 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       html+=cards(metric("Completed matches",completed.length,"Of 207 scheduled")+metric("Latest results","Week "+(latest||"—"),"From LeagueLeader")+metric("7–0 sweeps",sweeps.length,"Recorded matches")+metric("Eligible player lists",eligibleSynced?"Filtered":"Provisional","Confirmed exclusions only"));
       html+=pageTitle("Power Rankings: top five","Weighted 60% last three matches, 30% season game-win rate, 10% opponent strength. Not official standings.");
       html+=table(["Power rank","Team","Score","Recent form"],rs.slice(0,5).map((r,i)=>row([String(i+1),safe(r.name),r.score.toFixed(1),pct(r.recent)])));
+      const notable=rs.filter(r=>r.matches>=2&&Math.abs(r.recent-r.overall)>=0.18).sort((a,b)=>Math.abs(b.recent-b.overall)-Math.abs(a.recent-a.overall)).slice(0,4);
+      html+=pageTitle("Form anomalies","Flags large changes in the last three matches relative to a team's season game-win rate.");
+      html+=notable.length?notable.map(r=>`<div class="arecap">${r.recent>r.overall?"📈":"📉"} <b>${safe(r.name)}</b> · last-three form ${pct(r.recent)} versus season ${pct(r.overall)} (${((r.recent-r.overall)*100).toFixed(1)} percentage points).</div>`).join(""):'<p class="muted">No large form changes identified with the available sample.</p>';
       html+=`<div class="anote">Performance ratings are descriptive indices, not an official handicap or standings system. Confirmed substitute exclusions affect player lists, not team results.</div>`;
     } else if(analyticsPage==="teams"){
       const sel=$a("aTeam")?.value||allTeams()[0],hist=matchLog(sel),r=teamRecord(sel),c=gameByType(sel,f=>f==="Cricket"),x=gameByType(sel,f=>f!=="Cricket");
@@ -280,7 +283,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
   async function loadEligibility(){
     if(!bc)return;
     const {data:rows,error}=await bc.from("league_player_exclusions").select("player_name,reason,confirmed_at").order("player_name");
-    if(!error){exclusionRows=rows||[];eligibleSynced=true;}
+    if(!error){exclusionRows=rows||[];eligibleSynced=true;window.analyticsExcludedNames=exclusionRows.map(x=>x.player_name);renderPlayers();renderHome();}
   }
   $a("analyticsTabs").addEventListener("click",e=>{const t=e.target.closest("[data-analytic]");if(!t)return;analyticsPage=t.dataset.analytic;renderAnalytics()});
   window.renderAnalytics=renderAnalytics;
@@ -289,7 +292,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
   const originalView=view;
   window.showAnalytics=()=>{document.querySelectorAll("section").forEach(s=>s.classList.toggle("active",s.id==="analytics"));document.querySelectorAll(".nav button").forEach(b=>b.classList.toggle("active",b.dataset.view==="analytics"));renderAnalytics();loadEligibility().then(renderAnalytics);window.scrollTo({top:0,behavior:"smooth"})};
   $a("analyticsNav").addEventListener("click",window.showAnalytics);
-  const originalSync=sync;
+  loadEligibility().catch(()=>{});
   $a("analyticsRefresh").addEventListener("click",()=>sync().then(()=>renderAnalytics()));
 })();
 renderHome();renderStandings();renderPlayers();renderSchedule();renderTeamDirectory();sync();setInterval(sync,300000);
