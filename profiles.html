@@ -3,6 +3,7 @@
 <title>Official Player Records | Upper Deck Dart League</title>
 <style>
 :root{font-family:Inter,system-ui,Arial,sans-serif;color:#e9f6f0;background:#0a1018}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 80% 0%,#173b35,transparent 50%),#0a1018}a{color:#81ecc0}header{border-bottom:1px solid #29453c;padding:24px 0}main,header>div{max-width:1100px;margin:auto;padding:0 20px}h1{font-size:clamp(27px,4vw,43px);margin:12px 0 4px}h2{margin:4px 0 16px}.muted{color:#a9c0b8}.small{font-size:12px}.eyebrow{letter-spacing:.17em;text-transform:uppercase;color:#83dcae;font-weight:750;font-size:11px}.layout{display:grid;grid-template-columns:300px 1fr;gap:18px;margin:22px 0}.panel{background:#14232c;border:1px solid #355348;border-radius:17px;padding:19px;margin-bottom:15px;min-width:0}.list{max-height:570px;overflow:auto}.player{display:block;width:100%;background:#0c1b25;border:1px solid #2c4b44;border-radius:10px;padding:11px;margin:8px 0;text-align:left;color:#def2e8;cursor:pointer}.player:hover,.player.active{border-color:#67e7ae;background:#123c32}.tag{display:inline-block;border:1px solid #3d7560;border-radius:99px;padding:4px 10px;font-size:11px;color:#aff0cd}.cardgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.card{background:#0e322b;border:1px solid #225943;border-radius:12px;padding:13px}.card strong{display:block;color:#9ff8c7;font-size:22px;margin:8px 0}.row{display:flex;align-items:center;gap:17px;flex-wrap:wrap}.avatar{width:104px;height:104px;border:1px solid #436b59;border-radius:19px;object-fit:cover;background:#1b3939}.placeholder{display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;color:#93ecc0}.btn{display:inline-block;cursor:pointer;padding:10px 15px;border-radius:10px;border:1px solid #487464;background:#173b33;color:#d5ffed;text-decoration:none;font:inherit;font-weight:650}.btn.primary{background:#5cdaa0;color:#052719}.btn:disabled{opacity:.5;cursor:wait}.notice{background:#18342e;border:1px solid #366a59;border-radius:10px;padding:12px;line-height:1.5;margin:10px 0}.notice.error{border-color:#ae6170;background:#3d232d}.formfield{display:block;font-size:13px;font-weight:650;margin:13px 0 5px}input,textarea,select{width:100%;border:1px solid #436358;background:#0a1d23;color:white;border-radius:9px;padding:11px;font:inherit}textarea{min-height:100px}.tablebox{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:500px}th,td{text-align:left;border-bottom:1px solid #355046;padding:10px;font-size:13px}th{color:#b2d2c4}hr{border:0;border-top:1px solid #345246;margin:17px 0}img{max-width:100%}@media(max-width:760px){.layout{grid-template-columns:1fr}.list{max-height:210px}.cardgrid{grid-template-columns:repeat(2,1fr)}}
+.weekly-chart{display:grid;grid-template-columns:40px minmax(0,1fr);gap:8px;margin:14px 0}.weekly-line{display:flex;align-items:center;gap:8px;min-height:36px}.weekly-line .weekly-label{font-size:12px;color:#bcd7cc;white-space:nowrap;width:32px}.weekly-track{flex:1;height:17px;background:#0c1b25;border-radius:7px;overflow:hidden;border:1px solid #284739}.weekly-fill{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#1d8f78,#80ebae)}.weekly-fill.mpr{background:linear-gradient(90deg,#3c87aa,#9cd9ef)}.weekly-value{width:70px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}.weekgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.weekmetric{background:#0d3029;border:1px solid #345e4c;border-radius:9px;padding:11px}.weekmetric strong{display:block;font-size:19px;color:#a4f6c9}.week-legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:#c5dace}.week-legend b{color:#b3ffd7}.weekly-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0}.weekly-tabs button{background:#162c32;border:1px solid #385e50;color:#c6e9db;border-radius:9px;padding:9px 12px}.weekly-tabs button.active{background:#67dba4;color:#05281a}.season-warning{background:#332c21;border-left:3px solid #ddb868;padding:11px;font-size:12px;color:#ffe8b6}@media(max-width:600px){.weekgrid{grid-template-columns:1fr 1fr}.weekly-value{width:57px}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script></head>
 <body><header><div><a href="/">← Back to Upper Deck</a><p class="eyebrow">2021 to present · League history</p><h1>Official Player Records</h1><p class="muted">Upper Deck's official player history from the inaugural 2021–22 season through today.</p></div></header>
@@ -26,6 +27,7 @@ const safe=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;
 const equal=(a,b)=>String(a||'').trim().toLocaleLowerCase()===String(b||'').trim().toLocaleLowerCase();
 const client=window.supabase?.createClient(BASE,KEY);
 let career=null,rawPlayers=[],cleanup=[],resolutions=[],profiles=[],claims=[],user=null,officer=false,chosen='',myProfile=null;
+let weeklyData=null,weeklyError='',weeklyLoading=false;
 function prepareCleanedPlayers(){
  const raw=rawPlayers.map(p=>({...p,seasons:(p.seasons||[]).map(x=>({...x}))}));
  const rules=new Map(cleanup.map(x=>[String(x.source_name).trim().toLowerCase(),x]));
@@ -112,6 +114,7 @@ async function load(){
   const url=new URL(location.href),requested=url.searchParams.get('player');
   chosen=playerFor(requested)?.name||career.players?.[0]?.name||'';
   renderPlayer();
+  loadWeeklyData();
   const parsed=career.reports.filter(x=>x.status==='parsed').length;
   info(career.player_count+' player records loaded · '+parsed+' of '+career.reports.length+' historical reports parsed. Official Upper Deck career records loaded.');
  }catch(e){info('Unable to load career data: '+e.message,true)}
@@ -145,7 +148,95 @@ function renderPlayer(){
  '<p class="small muted">Official Upper Deck career averages use game-count weighting of published season PPD/MPR. Exact dart-weighted or mark-weighted values are not available from these summary reports.</p>'+
  '<h3>Season-by-season history</h3><div class="tablebox"><table><thead><tr><th>Season</th><th>Game</th><th>Average</th><th>Games</th><th>Team</th></tr></thead><tbody>'+
  seasons.map(x=>'<tr><td>'+safe(x.season)+'</td><td>'+safe(x.metric)+'</td><td>'+Number(x.average).toFixed(2)+'</td><td>'+x.games+'</td><td>'+safe(x.team)+'</td></tr>').join('')+'</tbody></table></div>'+
- (linked?'<p class="tag">This is your approved player profile</p>':'');
+ (linked?'<p class="tag">This is your approved player profile</p>':'')+
+ '<div id="weeklyPlayerTrends" class="panel" style="margin-top:20px" aria-live="polite"></div>';
+ renderWeeklyTrends();
+}
+
+async function loadWeeklyData(){
+ if(weeklyLoading||weeklyData)return;
+ weeklyLoading=true;
+ renderWeeklyTrends();
+ try{
+  const r=await fetch('/api/player-games');
+  const result=await r.json();
+  if(!r.ok||result.error){
+   if(result.stale?.players){weeklyData=result.stale;weeklyError='Latest refresh unavailable. Showing cached data.';}
+   else throw Error(result.error||'Player detail report unavailable');
+  }else{weeklyData=result;weeklyError=''}
+ }catch(e){weeklyError=e.message||'Weekly data unavailable'}
+ finally{weeklyLoading=false;renderWeeklyTrends()}
+}
+function playerWeeklyRecords(name){
+ if(!weeklyData?.players)return null;
+ const player=playerFor(name);
+ if(!player)return null;
+ const approved=new Set([player.name,...(player.aliases||[])].map(x=>x.trim().toLowerCase()));
+ const items=weeklyData.players.filter(x=>approved.has(String(x.name||'').trim().toLowerCase()));
+ const byWeek=new Map(),total=items.reduce((n,x)=>n+(x.games||[]).length,0);
+ let inferred=0,ambiguous=0;
+ for(const item of items){
+  for(const g of item.games||[]){
+   if(!Number.isInteger(g.inferred_week)){ambiguous++;continue}
+   inferred++;
+   const week=g.inferred_week;
+   if(!byWeek.has(week))byWeek.set(week,{week,date:g.inferred_date,PPD:[],MPR:[],wins:0,games:0});
+   const row=byWeek.get(week);
+   if(g.metric==='PPD'||g.metric==='MPR')row[g.metric].push(Number(g.rate));
+   row.wins+=g.win?1:0;row.games++;
+  }
+ }
+ return {weeks:[...byWeek.values()].sort((a,b)=>a.week-b.week),inferred,unassigned:ambiguous,total};
+}
+function renderWeeklyTrends(){
+ const root=$('weeklyPlayerTrends');
+ if(!root)return;
+ if(weeklyLoading&&!weeklyData){root.innerHTML='<h3>2026–27 weekly trends</h3><p class="muted">Loading individual game results…</p>';return}
+ if(!weeklyData){
+  root.innerHTML='<h3>2026–27 weekly trends</h3><p class="muted">'+safe(weeklyError||'Individual weekly results are not available yet.')+
+  '</p><p class="small muted">Official historical season averages remain available above.</p>';return
+ }
+ const r=playerWeeklyRecords(chosen);
+ if(!r||r.total===0){root.innerHTML='<h3>2026–27 weekly trends</h3><p class="muted">No current-season individual games found for this player.</p>';return}
+ const weeks=r.weeks;
+ const chart=metric=>{
+  const values=weeks.filter(w=>w[metric].length).map(w=>({week:w.week,games:w[metric].length,
+      avg:w[metric].reduce((a,b)=>a+b,0)/w[metric].length}));
+  if(!values.length)return '<p class="muted">No inferred '+metric+' results yet.</p>';
+  const max=Math.max(...values.map(v=>v.avg),1);
+  return '<div class="weekly-chart" role="img" aria-label="'+safe(metric)+' individual weekly averages">'+
+    values.map(v=>'<div class="weekly-label">W'+v.week+'</div><div class="weekly-line">'+
+     '<div class="weekly-track"><span class="weekly-fill '+(metric==='MPR'?'mpr':'')+'" style="width:'+Math.max(2,100*v.avg/max)+'%"></span></div>'+
+     '<span class="weekly-value">'+v.avg.toFixed(2)+' <span class="muted">('+v.games+')</span></span></div>').join('')+'</div>';
+ };
+ const lastThree=weeks.slice(-3);
+ const sum=lastThree.reduce((a,w)=>({wins:a.wins+w.wins,games:a.games+w.games}),{wins:0,games:0});
+ const span=weeks.length?weeks[0].week+'–'+weeks.at(-1).week:'—';
+ root.innerHTML='<h3>📈 2026–27 weekly performance</h3>'+
+  '<p class="small muted">Current season only. A week is shown when the individual game can be uniquely aligned to the dated team schedule. These week assignments are inferred, not printed on the source report.</p>'+
+  (weeklyError?'<p class="season-warning">'+safe(weeklyError)+'</p>':'')+
+  '<div class="weekgrid">'+
+   '<div class="weekmetric"><span class="small">Weeks represented</span><strong>'+weeks.length+'</strong><span class="small muted">Weeks '+span+'</span></div>'+
+   '<div class="weekmetric"><span class="small">Last 3 represented weeks</span><strong>'+sum.wins+'/'+sum.games+'</strong><span class="small muted">Individual game wins</span></div>'+
+   '<div class="weekmetric"><span class="small">Games assigned to weeks</span><strong>'+r.inferred+'/'+r.total+'</strong><span class="small muted">'+r.unassigned+' unassigned</span></div></div>'+
+  '<div class="weekly-tabs" role="group" aria-label="Weekly scoring metric">'+
+  '<button id="weekPPD" class="active" type="button">01 PPD</button><button id="weekMPR" type="button">Cricket MPR</button></div>'+
+  '<div id="weekChart">'+chart('PPD')+'</div>'+
+  '<p class="small muted">Values are arithmetic averages of the reported single-game rates for that week, not true dart/mark-weighted averages. Numbers in parentheses indicate included games. Unassigned games are excluded rather than placed in a guessed week.</p>'+
+  (r.unassigned?'<p class="season-warning">'+r.unassigned+' game(s) could not be uniquely assigned to a week, so the trend is incomplete. Their season totals remain in the official career summary.</p>':'')+
+  '<div class="tablebox"><table><thead><tr><th>Week</th><th>Schedule date</th><th>01 PPD</th><th>Cricket MPR</th><th>Games won</th></tr></thead><tbody>'+
+  weeks.map(w=>'<tr><td>'+w.week+'</td><td>'+safe(w.date||'—')+'</td><td>'+(
+   w.PPD.length?(w.PPD.reduce((a,b)=>a+b,0)/w.PPD.length).toFixed(2)+' ('+w.PPD.length+')':'—')+
+   '</td><td>'+(w.MPR.length?(w.MPR.reduce((a,b)=>a+b,0)/w.MPR.length).toFixed(2)+' ('+w.MPR.length+')':'—')+
+   '</td><td>'+w.wins+'/'+w.games+'</td></tr>').join('')+'</tbody></table></div>';
+ for(const metric of ['PPD','MPR']){
+  const button=$('week'+metric);
+  button.addEventListener('click',()=>{
+   $('weekPPD').classList.toggle('active',metric==='PPD');
+   $('weekMPR').classList.toggle('active',metric==='MPR');
+   $('weekChart').innerHTML=chart(metric);
+  });
+ }
 }
 function renderAccount(){
  if(!user){$('account').innerHTML='<p class="muted small">Sign in through Community to customize your photo, nickname and bio.</p><a class="btn primary" href="/#community">Go to Community sign-in</a>';return}
