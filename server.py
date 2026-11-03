@@ -8,6 +8,20 @@ ROOT=pathlib.Path(__file__).parent
 SCHEDULE=json.loads((ROOT/'schedule.json').read_text())
 STANDINGS='https://leagueleader.net/sharedreport.php?operatorid=497&code=98aaaf95-13ba-40ae-800d-f6b6ffa9bb6e'
 GAMES='https://leagueleader.net/sharedreport.php?operatorid=497&code=539607b8-de1c-4332-a95e-33c7a8584f89'
+GAME_ORDER=('301 D/D','Cricket','501 D/D','Cricket','701 O/D','Cricket','501 D/D')
+
+def canonical_game_format(label):
+    cleaned=re.sub(r'[^a-z0-9]','',str(label).lower())
+    if cleaned.startswith('301'):return '301'
+    if cleaned.startswith('501'):return '501'
+    if cleaned.startswith('701'):return '701'
+    if 'cricket' in cleaned:return 'cricket'
+    return cleaned
+
+def expected_sequence(formats):
+    return len(formats)==7 and all(canonical_game_format(actual)==canonical_game_format(expected)
+        for actual,expected in zip(formats,GAME_ORDER))
+
 app=Flask(__name__)
 cache={'at':0,'data':None}
 HEADERS={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36','Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'}
@@ -118,7 +132,8 @@ def build_matches(raw):
             wins=[(0 if g['win'] else 1) if is_home else (1 if g['win'] else 0) for _,g in entries]
             output.append({'week':week['num'],'teams':[home,away], 'wins':wins,
                            'times':[g['datetime'] for _,g in entries],
-                           'formats':[g['format'] for _,g in entries]})
+                           'formats':[g['format'] for _,g in entries],
+                           'sequence_valid':expected_sequence([g['format'] for _,g in entries])})
     return output
 
 def report_diagnostic(url):
@@ -254,11 +269,14 @@ def assign_candidate_weeks(result, matches):
                 continue
             for k,fmt in enumerate(match['formats']):
                 if k>=len(match['wins']):continue
+                if not match.get('sequence_valid',False):continue
                 kind='MPR' if 'cricket' in str(fmt).lower() else 'PPD'
                 slots.append({'metric':kind,'game':str(fmt),
                      'win':norm(match['teams'][match['wins'][k]])==team,
                      'week':int(match['week']),
-                     'date':schedule_dates.get(int(match['week']))})
+                     'date':schedule_dates.get(int(match['week'])),
+                     'game_number':k+1,
+                     'is_deciding_game':k==6 and match['wins'][:6].count(0)==3 and match['wins'][:6].count(1)==3})
         for metric in ('PPD','MPR'):
             indexes=[i for i,g in enumerate(person['games']) if g['metric']==metric]
             seq=[person['games'][i] for i in indexes]
@@ -292,10 +310,15 @@ def assign_candidate_weeks(result, matches):
                     suffix[i][j]=(suffix[i][j+1] or
                                   compatible(i,j) and suffix[i+1][j+1])
             for k,game in enumerate(seq):
-                possible={options[j]['week'] for j in range(n)
-                          if forward[k][j] and compatible(k,j) and suffix[k+1][j+1]}
+                possible_slots=[options[j] for j in range(n)
+                          if forward[k][j] and compatible(k,j) and suffix[k+1][j+1]]
+                possible={slot['week'] for slot in possible_slots}
                 if len(possible)==1:
                     week=next(iter(possible))
+                    game_numbers={slot['game_number'] for slot in possible_slots}
+                    if len(game_numbers)==1:
+                        game['inferred_game_number']=next(iter(game_numbers))
+                        game['inferred_decider']=all(slot['is_deciding_game'] for slot in possible_slots)
                     game['inferred_week']=week
                     game['inferred_date']=schedule_dates.get(week)
                     game['week_confidence']='unique_ordered_alignment'
@@ -318,7 +341,10 @@ def assign_candidate_weeks(result, matches):
             'MPR':{'games':len(v['MPR']),'average':round(sum(v['MPR'])/len(v['MPR']),2)} if v['MPR'] else None}
             for v in sorted(byweek.values(),key=lambda x:x['week'])]
     result['matching']={'assigned':matched,'ambiguous':ambiguous,'unmatched':unmatched,
-       'method':'Ordered per-player results aligned to matching team game type, win/loss and custom dated schedule',
+       'method':'Ordered per-player results aligned to seven-game medley sequence, matching team game type, win/loss and custom dated schedule',
+       'game_order':list(GAME_ORDER),
+       'validated_matches':sum(bool(m.get('sequence_valid')) for m in matches),
+       'invalid_sequence_matches':sum(not bool(m.get('sequence_valid')) for m in matches),
        'caveat':'Weeks are inferred, not printed by LeagueLeader. A week is displayed only when every possible order-preserving match places the game there.'}
     result['week_verified']=False
     return result
