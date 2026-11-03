@@ -156,6 +156,10 @@ def refresh():
 
 @app.route('/')
 def home():return send_from_directory(ROOT,'index.html')
+
+@app.route('/register')
+@app.route('/register.html')
+def register():return send_from_directory(ROOT,'register.html')
 @app.route('/api/live')
 def live():
     try:return jsonify(refresh())
