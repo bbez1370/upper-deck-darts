@@ -496,7 +496,7 @@ def historical_careers():
         p['seasons'].sort(key=lambda row:(row['season'],row['metric']))
         players.append(p)
     players.sort(key=lambda p:p['name'].lower())
-    output={'updated':datetime.now().astimezone().isoformat(timespec='seconds'),
+    output={'record_status':'official','league':'Upper Deck Dart League','approved_seasons':['2021–22','2022–23','2023–24','2024–25','2025–26'],'career_average_method':'game_weighted_from_published_season_averages','updated':datetime.now().astimezone().isoformat(timespec='seconds'),
         'reports':entries,'current':current,'players':players,'player_count':len(players),
         'method':'Season PPD/MPR values weighted by games as an estimate; exact career averages require dart/mark totals.',
         'warnings':['Confirmed historical season labels are supplied by the league organizer.','Different player rows for the same name and metric in one report are excluded until reviewed.','Names with changed spellings require organizer-approved merge decisions.','Game-count-weighted career statistics are estimates, not exact dart- or mark-weighted averages.']}
