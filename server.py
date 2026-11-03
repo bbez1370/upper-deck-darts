@@ -157,6 +157,10 @@ def refresh():
 @app.route('/')
 def home():return send_from_directory(ROOT,'index.html')
 
+@app.route('/profiles')
+@app.route('/profiles.html')
+def profiles_page():return send_from_directory(ROOT,'profiles.html')
+
 @app.route('/register')
 @app.route('/register.html')
 def register():return send_from_directory(ROOT,'register.html')
