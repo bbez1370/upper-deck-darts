@@ -462,7 +462,7 @@ def historical_careers():
                         seen_season_rows.add(unique)
                         item=records.setdefault(key,{'name':name,'seasons':[]})
                         item['seasons'].append({'season':label,'metric':metric,'average':avg,
-                                                 'games':games,'team':p['team'],'report_number':number})
+                                                 'games':games,'team':p['team'],'report_number':number,'source_player':name})
         except Exception as error:
             record['error']=str(error)[:130]
         entries.append(record)
@@ -480,7 +480,7 @@ def historical_careers():
                     seen_season_rows.add(unique)
                     entry['seasons'].append({'season':'2026–27','metric':metric,
                         'average':float(p['ppd'] if metric=='PPD' else p['mpr']),
-                        'games':int(p['games']),'team':p['team'],'report_number':0})
+                        'games':int(p['games']),'team':p['team'],'report_number':0,'source_player':name})
     except Exception as error:
         current['error']=str(error)[:130]
     players=[]
