@@ -120,7 +120,7 @@ $('refreshButton').addEventListener('click',sync);
 
 const BX='https://nnlfzmdranazqujklkrm.supabase.co',BK='sb_publishable_U3i_JSjunfsbtXEx8Wsuzw_LTQ9PPhb';
 let bc=null,bu=null,bmod=false,bitems=[],bbusy=false;
-function bnotice(t,error=false){$('bstatus').textContent=t;$('bstatus').classList.toggle('berror',error)}
+function bnotice(t,error=false){$('bstatus').textContent=t;$('bstatus').classList.toggle('berror',error);const feedback=$('bauthFeedback');if(feedback){feedback.textContent=t;feedback.classList.toggle('berror',error)}}
 function buser(user){bu=user;$('bauth').classList.toggle('bhidden',!!bu);$('bsignout').classList.toggle('bhidden',!bu);$('bcompose').classList.toggle('bhidden',!bu);$('bidentity').textContent=bu?'Signed in as '+(bu.user_metadata?.display_name||bu.email):'Sign in to post. Everyone can read.';$('bcomposehint').textContent=bu?'Messages are visible to everyone.':'Sign in to write a post.'}
 function brender(){
  const render=p=>'<article class="'+(p.pinned?'bpin':'bpost')+'"><b>'+htmlEscape(p.display_name)+'</b> <span class="bmeta">'+htmlEscape(p.category==='sub'?'Substitute request':p.category==='announcement'?'Official announcement':'League chat')+' · '+new Date(p.created_at).toLocaleString()+'</span><h4>'+htmlEscape(p.subject)+'</h4><p>'+htmlEscape(p.body)+'</p>'+((bmod||bu?.id===p.author_id)?'<div class="btools">'+(bmod&&p.category==='announcement'?'<button class="bclick" type="button" data-baction="'+(p.pinned?'unpin':'pin')+'" data-bid="'+p.id+'">'+(p.pinned?'Unpin':'📌 Pin')+'</button>':'')+'<button class="bclick" type="button" data-baction="delete" data-bid="'+p.id+'">Remove</button></div>':'')+'</article>';
