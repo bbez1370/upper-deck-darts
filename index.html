@@ -109,7 +109,7 @@ async function sync(){
    $('syncStatus').textContent=`Live · ${updatedAt.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;$('syncStatus').className='status good';
    $('syncFootnote').textContent=`Last successful import: ${updatedAt.toLocaleString()} · ${payload.records??'?'} game records · ${payload.matches.length} complete matches`;
    $('syncError').hidden=true;
-   refreshTeamFilter();renderHome();renderStandings();renderPlayers();renderSchedule();renderTeamDirectory();if(document.querySelector("#playerprofile.active"))renderPlayerProfile();if(document.querySelector("#teamprofile.active"))renderTeamProfile();
+   refreshTeamFilter();renderHome();renderStandings();renderPlayers();renderSchedule();renderTeamDirectory();if(document.querySelector("#playerprofile.active"))renderPlayerProfile();if(document.querySelector("#teamprofile.active"))renderTeamProfile();if(document.querySelector("#analytics.active"))window.renderAnalytics?.();
  }catch(e){$('syncStatus').textContent=loadedOnce?'Last known data':'Live connection unavailable';$('syncStatus').className='status error';$('syncError').hidden=false;$('syncError').textContent=loadedOnce?`Couldn't refresh just now. Data shown is from the last successful update (${updatedAt.toLocaleString()}).`:`${fallbackMessage} (${String(e.message).slice(0,150)})`;renderHome();renderStandings();renderPlayers();renderSchedule();}
  finally{$('refreshButton').disabled=false;}
 }
@@ -170,8 +170,8 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
     }).sort((a,b)=>b.score-a.score);
   }
   const metric=(label,value,note)=>`<div class="ametric"><small>${safe(label)}</small><strong>${safe(value)}</strong><small>${safe(note)}</small></div>`;
-  const weekPick=id=>`<select class="form" id="${id}">${schedule.map(w=>`<option value="${w.num}">Week ${w.num} · ${w.date}</option>`).join("")}</select>`;
-  const teamPick=id=>`<select class="form" id="${id}">${allTeams().map(n=>`<option value="${safe(n)}">${safe(n)}</option>`).join("")}</select>`;
+  const weekPick=id=>`<select class="form" id="${id}">${schedule.map(w=>`<option value="${w.num}" ${String($a(id)?.value||"")===String(w.num)?"selected":""}>Week ${w.num} · ${w.date}</option>`).join("")}</select>`;
+  const teamPick=id=>`<select class="form" id="${id}">${allTeams().map(n=>`<option value="${safe(n)}" ${norm($a(id)?.value||"")===norm(n)?"selected":""}>${safe(n)}</option>`).join("")}</select>`;
   const cards=(s)=>`<div class="ametrics">${s}</div>`;
   const table=(head,rows)=>`<div class="table-scroll"><table><thead><tr>${head.map(x=>`<th>${safe(x)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
   const row=cells=>`<tr>${cells.map(c=>`<td>${c}</td>`).join("")}</tr>`;
@@ -205,7 +205,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const topP=eligible.sort((a,b)=>b.ppd-a.ppd)[0],topC=eligibleC.sort((a,b)=>b.mpr-a.mpr)[0];
       html+=pageTitle("Player Analytics","Season PPD and MPR are verified; individual weekly PPD/MPR trends are not available from the current importer.");
       html+=cards(metric("Leading 01 PPD",topP?Number(topP.ppd).toFixed(2):"—",topP?.name||"")+metric("Leading Cricket MPR",topC?Number(topC.mpr).toFixed(2):"—",topC?.name||"")+metric("Confirmed exclusions",exclusionRows.length,"Not shown in eligible player rankings")+metric("Data granularity","Season","Dated player averages not yet linked"));
-      html+=`<label>Compare player ${`<select id="aPlayer" class="form">${players.map(p=>`<option value="${safe(p.name)}">${safe(p.name)}</option>`).join("")}</select>`}</label>`;
+      html+=`<label>Compare player ${`<select id="aPlayer" class="form">${players.map(p=>`<option value="${safe(p.name)}" ${norm($a("aPlayer")?.value||"")===norm(p.name)?"selected":""}>${safe(p.name)}</option>`).join("")}</select>`}</label>`;
       const pName=$a("aPlayer")?.value||players[0]?.name||"",p=players.find(z=>norm(z.name)===norm(pName)),c=cricket.find(z=>norm(z.name)===norm(pName));
       html+=cards(metric("01 PPD",p?.ppd??"—",`${p?.games??0} games`)+metric("Cricket MPR",c?.mpr??"—",`${c?.games??0} games`)+metric("Team",p?.team||c?.team||"—","Season listing")+metric("Eligibility",confirmedExcluded(pName)?"Excluded":"Provisional","Only confirmed substitutes removed"));
       html+=`<div class="anote">No weekly player trend chart is shown because current records do not associate each player's performance with a specific week. These are season averages, not invented weekly values.</div>`;
