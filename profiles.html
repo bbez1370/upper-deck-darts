@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player Profiles | Upper Deck Dart League</title>
+<style>
+:root{font-family:Inter,system-ui,Arial,sans-serif;color:#e9f6f0;background:#0a1018}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 80% 0%,#173b35,transparent 50%),#0a1018}a{color:#81ecc0}header{border-bottom:1px solid #29453c;padding:24px 0}main,header>div{max-width:1100px;margin:auto;padding:0 20px}h1{font-size:clamp(27px,4vw,43px);margin:12px 0 4px}h2{margin:4px 0 16px}.muted{color:#a9c0b8}.small{font-size:12px}.eyebrow{letter-spacing:.17em;text-transform:uppercase;color:#83dcae;font-weight:750;font-size:11px}.layout{display:grid;grid-template-columns:300px 1fr;gap:18px;margin:22px 0}.panel{background:#14232c;border:1px solid #355348;border-radius:17px;padding:19px;margin-bottom:15px;min-width:0}.list{max-height:570px;overflow:auto}.player{display:block;width:100%;background:#0c1b25;border:1px solid #2c4b44;border-radius:10px;padding:11px;margin:8px 0;text-align:left;color:#def2e8;cursor:pointer}.player:hover,.player.active{border-color:#67e7ae;background:#123c32}.tag{display:inline-block;border:1px solid #3d7560;border-radius:99px;padding:4px 10px;font-size:11px;color:#aff0cd}.cardgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.card{background:#0e322b;border:1px solid #225943;border-radius:12px;padding:13px}.card strong{display:block;color:#9ff8c7;font-size:22px;margin:8px 0}.row{display:flex;align-items:center;gap:17px;flex-wrap:wrap}.avatar{width:104px;height:104px;border:1px solid #436b59;border-radius:19px;object-fit:cover;background:#1b3939}.placeholder{display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;color:#93ecc0}.btn{display:inline-block;cursor:pointer;padding:10px 15px;border-radius:10px;border:1px solid #487464;background:#173b33;color:#d5ffed;text-decoration:none;font:inherit;font-weight:650}.btn.primary{background:#5cdaa0;color:#052719}.btn:disabled{opacity:.5;cursor:wait}.notice{background:#18342e;border:1px solid #366a59;border-radius:10px;padding:12px;line-height:1.5;margin:10px 0}.notice.error{border-color:#ae6170;background:#3d232d}.formfield{display:block;font-size:13px;font-weight:650;margin:13px 0 5px}input,textarea,select{width:100%;border:1px solid #436358;background:#0a1d23;color:white;border-radius:9px;padding:11px;font:inherit}textarea{min-height:100px}.tablebox{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:500px}th,td{text-align:left;border-bottom:1px solid #355046;padding:10px;font-size:13px}th{color:#b2d2c4}hr{border:0;border-top:1px solid #345246;margin:17px 0}img{max-width:100%}@media(max-width:760px){.layout{grid-template-columns:1fr}.list{max-height:210px}.cardgrid{grid-template-columns:repeat(2,1fr)}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script></head>
+<body><header><div><a href="/">← Back to Upper Deck</a><p class="eyebrow">2021 to present · League history</p><h1>Player Profiles</h1><p class="muted">Meet the players. Follow careers. Celebrate their best darts.</p></div></header>
+<main><p id="status" class="notice" role="status" aria-live="polite">Loading player records…</p>
+<div class="layout"><aside><div class="panel"><h2>Find a player</h2><input id="search" aria-label="Search players" placeholder="Search player names"><p id="count" class="muted small"></p><div id="names" class="list"></div></div><div class="panel"><h2>Your profile</h2><div id="account"></div></div></aside>
+<div><article id="view" class="panel"><p class="muted">Choose a player to see their career.</p></article><article class="panel"><h2>Historical report coverage</h2><div id="coverage" class="muted">Checking reports…</div></article><article class="panel" id="moderation" hidden><h2>Officer: Player identity approvals</h2><p class="muted small">Only approve a player when you know this account belongs to that person.</p><div id="claims"></div></article></div></div></main>
+<script>
+(function(){
+const BASE='https://nnlfzmdranazqujklkrm.supabase.co',KEY='sb_publishable_U3i_JSjunfsbtXEx8Wsuzw_LTQ9PPhb';
+const $=id=>document.getElementById(id);
+const safe=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const equal=(a,b)=>String(a||'').trim().toLocaleLowerCase()===String(b||'').trim().toLocaleLowerCase();
+const client=window.supabase?.createClient(BASE,KEY);
+let career=null,profiles=[],claims=[],user=null,officer=false,chosen='',myProfile=null;
+function info(message,error){$('status').textContent=message;$('status').className='notice'+(error?' error':'')}
+function photo(path){if(!path)return '';return BASE+'/storage/v1/object/public/league-avatars/'+path.split('/').map(encodeURIComponent).join('/')+'?t='+Date.now()}
+function head(name){return String(name||'?').split(/\s+/).map(x=>x[0]||'').slice(0,2).join('').toUpperCase()}
+function playerFor(name){return (career?.players||[]).find(p=>equal(p.name,name))}
+function approvedFor(name){return claims.find(c=>c.status==='approved'&&equal(c.player_name,name))}
+function profileFor(name){const approved=approvedFor(name);return approved?profiles.find(p=>p.user_id===approved.user_id):null}
+function avatar(p,name){return p?.avatar_path?'<img class="avatar" alt="Profile photo for '+safe(name)+'" src="'+safe(photo(p.avatar_path))+'">':'<div class="avatar placeholder" aria-label="No profile photo">'+safe(head(name))+'</div>'}
+async function load(){
+ if(!client){info('Profile connection library unavailable. Reload the page.',true);return}
+ try{
+  const [{data:u},archive,pres,clm]=await Promise.all([client.auth.getUser(),fetch('/api/careers').then(r=>r.json()),client.from('league_member_profiles').select('*'),client.from('league_player_claims').select('*')]);
+  if(archive.error)throw Error(archive.error);
+  career=archive;user=u?.user||null;
+  profiles=pres.data||[];claims=clm.data||[];
+  if(pres.error||clm.error)info('Player statistics loaded, but account profiles are temporarily unavailable.',true);
+  const mod=await client.from('board_moderators').select('user_id').eq('user_id',user?.id||'00000000-0000-0000-0000-000000000000').maybeSingle();
+  officer=!!mod.data;
+  myProfile=profiles.find(p=>p.user_id===user?.id)||null;
+  renderNames();renderCoverage();renderAccount();renderOfficer();
+  const url=new URL(location.href),requested=url.searchParams.get('player');
+  chosen=playerFor(requested)?.name||career.players?.[0]?.name||'';
+  renderPlayer();
+  const parsed=career.reports.filter(x=>x.status==='parsed').length;
+  info(career.player_count+' player records loaded · '+parsed+' of '+career.reports.length+' historical reports parsed. Historical averages marked as estimates.');
+ }catch(e){info('Unable to load career data: '+e.message,true)}
+}
+function renderCoverage(){
+ const r=career?.reports||[];
+ $('coverage').innerHTML='<p class="small">Season names are inferred from report headings. Unavailable or unrecognized reports are not included in career estimates.</p>'+
+ r.map(x=>'<div style="padding:8px 0;border-bottom:1px solid #355046"><span class="tag">Report '+x.report_number+'</span> '+safe(x.season||'Season not yet confirmed')+' · '+safe(x.status)+' · '+(x.players_01||0)+' 01 / '+(x.players_cricket||0)+' Cricket entries <a href="'+safe(x.url)+'" target="_blank" rel="noopener">Source</a></div>').join('')+
+ '<p class="small muted">Current 2026–27 season: '+safe(career?.current?.status||'unavailable')+'. Profiles match exact recorded names only. Officers must approve account claims.</p>';
+}
+function renderNames(){
+ const query=$('search').value.trim().toLowerCase();
+ const people=(career?.players||[]).filter(p=>p.name.toLowerCase().includes(query));
+ $('count').textContent=people.length+' matching players';
+ $('names').innerHTML=people.map(p=>'<button class="player '+(equal(p.name,chosen)?'active':'')+'" data-name="'+safe(p.name)+'">'+safe(p.name)+' '+(profileFor(p.name)?'📸':'')+'<div class="small muted">'+new Set(p.seasons.map(s=>s.season)).size+' season(s) recorded</div></button>').join('')||'<p class="muted">No matching player names.</p>';
+ $('names').querySelectorAll('[data-name]').forEach(b=>b.addEventListener('click',()=>{chosen=b.dataset.name;history.replaceState(null,'','?player='+encodeURIComponent(chosen));renderNames();renderPlayer()}));
+}
+function measure(p,type){const c=p.career?.[type];return c?'<strong>'+Number(c.game_weighted_estimate).toFixed(2)+'</strong><span class="small muted">'+c.games+' games · estimated</span>':'<strong>—</strong><span class="small muted">Not available</span>'}
+function renderPlayer(){
+ const p=playerFor(chosen);
+ if(!p){$('view').innerHTML='<h2>Player history</h2><p class="muted">No verified player rows available yet. See historical coverage below.</p>';return}
+ const pub=profileFor(p.name),seasons=[...p.seasons].sort((a,b)=>a.season.localeCompare(b.season)||a.metric.localeCompare(b.metric));
+ const linked=claims.some(c=>c.user_id===user?.id&&c.status==='approved'&&equal(c.player_name,p.name));
+ $('view').innerHTML='<div class="row">'+avatar(pub,p.name)+'<div><h2>'+safe(pub?.display_name||p.name)+'</h2><p class="muted">'+safe(pub?.nickname||'Upper Deck darts player')+'</p><span class="tag">'+new Set(seasons.map(s=>s.season)).size+' recorded seasons</span></div></div>'+
+ (pub?.bio?'<p>'+safe(pub.bio)+'</p>':'')+
+ ((pub?.favorite_double||pub?.darts_setup)?'<p class="muted small">'+(pub?.favorite_double?'Favorite double: '+safe(pub.favorite_double)+' · ':'')+(pub?.darts_setup?'Darts: '+safe(pub.darts_setup):'')+'</p>':'')+
+ '<h3>Career snapshot</h3><div class="cardgrid"><div class="card"><span class="small">Career 01 PPD</span>'+measure(p,'PPD')+'</div><div class="card"><span class="small">Career Cricket MPR</span>'+measure(p,'MPR')+'</div><div class="card"><span class="small">Recorded 01 games</span><strong>'+(p.career?.PPD?.games||'—')+'</strong></div><div class="card"><span class="small">Recorded Cricket games</span><strong>'+(p.career?.MPR?.games||'—')+'</strong></div></div>'+
+ '<p class="small muted">Career averages above are game-count-weighted estimates from published season averages. Exact dart-weighted PPD and mark-weighted MPR require underlying throws/marks, which these summaries may not supply.</p>'+
+ '<h3>Season-by-season history</h3><div class="tablebox"><table><thead><tr><th>Season</th><th>Game</th><th>Average</th><th>Games</th><th>Team</th></tr></thead><tbody>'+
+ seasons.map(x=>'<tr><td>'+safe(x.season)+'</td><td>'+safe(x.metric)+'</td><td>'+Number(x.average).toFixed(2)+'</td><td>'+x.games+'</td><td>'+safe(x.team)+'</td></tr>').join('')+'</tbody></table></div>'+
+ (linked?'<p class="tag">This is your approved player profile</p>':'');
+}
+function renderAccount(){
+ if(!user){$('account').innerHTML='<p class="muted small">Sign in through Community to customize your photo, nickname and bio.</p><a class="btn primary" href="/#community">Go to Community sign-in</a>';return}
+ const claim=claims.find(c=>c.user_id===user.id);
+ $('account').innerHTML='<p class="small muted">Signed in</p><p>'+safe(user.email)+'</p>'+
+ '<form id="editForm"><label class="formfield" for="pdisplay">Display name</label><input id="pdisplay" maxlength="60" required value="'+safe(myProfile?.display_name||user.user_metadata?.display_name||'')+'">'+
+ '<label class="formfield" for="pnick">Nickname</label><input id="pnick" maxlength="60" value="'+safe(myProfile?.nickname||'')+'">'+
+ '<label class="formfield" for="pbio">About me</label><textarea id="pbio" maxlength="500">'+safe(myProfile?.bio||'')+'</textarea>'+
+ '<label class="formfield" for="pdouble">Favorite double</label><input id="pdouble" maxlength="60" value="'+safe(myProfile?.favorite_double||'')+'">'+
+ '<label class="formfield" for="pdarts">Darts setup</label><input id="pdarts" maxlength="120" value="'+safe(myProfile?.darts_setup||'')+'">'+
+ '<label class="formfield" for="pimage">Profile photo (optional, max 2 MB)</label><input type="file" id="pimage" accept="image/jpeg,image/png,image/webp">'+
+ '<p class="small muted">Photos and bios become visible to the league only after your claim is approved. Upload only a photo you want displayed publicly.</p><button type="submit" class="btn primary" id="saveBtn">Save my profile</button></form><hr>'+
+ '<h3>Link my statistics</h3><p class="small muted">Select your exact LeagueLeader name. A moderator approves the match before your profile appears on those career records.</p>'+
+ (claim?'<p class="tag">Claim: '+safe(claim.player_name)+' · '+safe(claim.status)+'</p>':
+ '<form id="claimForm"><select id="claimName" required><option value="">Choose your LeagueLeader player name</option>'+
+ (career?.players||[]).map(p=>'<option value="'+safe(p.name)+'">'+safe(p.name)+'</option>').join('')+'</select><button class="btn" type="submit">Request profile claim</button></form>')+
+ '<p id="accountStatus" class="small" role="status"></p>';
+ $('editForm').addEventListener('submit',saveProfile);
+ $('claimForm')?.addEventListener('submit',submitClaim);
+}
+async function saveProfile(ev){
+ ev.preventDefault();const btn=$('saveBtn');btn.disabled=true;$('accountStatus').textContent='Saving…';
+ try{
+  let avatar=myProfile?.avatar_path||null;
+  const file=$('pimage').files?.[0];
+  if(file){
+   const mime={ 'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[file.type];
+   if(!mime||file.size>2097152)throw Error('Choose a JPG, PNG or WebP image under 2 MB.');
+   const path=user.id+'/avatar-'+Date.now()+'.'+mime;
+   const {error:upload}=await client.storage.from('league-avatars').upload(path,file,{contentType:file.type,upsert:false});
+   if(upload)throw upload;
+   avatar=path;
+  }
+  const record={user_id:user.id,display_name:$('pdisplay').value.trim(),nickname:$('pnick').value.trim(),bio:$('pbio').value.trim(),favorite_double:$('pdouble').value.trim(),darts_setup:$('pdarts').value.trim(),avatar_path:avatar,updated_at:new Date().toISOString()};
+  if(!record.display_name)throw Error('Please provide a display name.');
+  const {error}=await client.from('league_member_profiles').upsert(record,{onConflict:'user_id'});
+  if(error)throw error;
+  myProfile=record;profiles=profiles.filter(p=>p.user_id!==user.id).concat(record);
+  $('accountStatus').textContent='Saved! Your profile updates will show on an approved player profile.';renderPlayer();renderNames();
+ }catch(e){$('accountStatus').textContent='Could not save: '+e.message}
+ finally{btn.disabled=false}
+}
+async function submitClaim(e){
+ e.preventDefault();const name=$('claimName').value;
+ if(!playerFor(name)){ $('accountStatus').textContent='Choose a listed player first.';return }
+ const {error}=await client.from('league_player_claims').insert({user_id:user.id,player_name:name,status:'pending'});
+ if(error){$('accountStatus').textContent='Request failed: '+error.message;return}
+ claims.push({user_id:user.id,player_name:name,status:'pending'});renderAccount();
+}
+function renderOfficer(){
+ $('moderation').hidden=!officer;if(!officer)return;
+ const pending=claims.filter(c=>c.status==='pending');
+ $('claims').innerHTML=pending.length?pending.map(c=>'<div class="notice"><b>'+safe(c.player_name)+'</b> <span class="muted small">Account ID '+safe(c.user_id)+'</span><div class="row"><button class="btn" data-id="'+safe(c.user_id)+'" data-review="approved">Approve</button><button class="btn" data-id="'+safe(c.user_id)+'" data-review="rejected">Reject</button></div></div>').join(''):'<p class="muted">No pending profile claims.</p>';
+ $('claims').querySelectorAll('[data-review]').forEach(btn=>btn.addEventListener('click',async()=>{
+  const id=btn.dataset.id,status=btn.dataset.review;
+  if(status==='approved'&&!window.confirm('Have you verified that this person owns the matching player record?'))return;
+  btn.disabled=true;
+  const {error}=await client.from('league_player_claims').update({status,reviewed_by:user.id,updated_at:new Date().toISOString()}).eq('user_id',id);
+  if(error){info('Could not review claim: '+error.message,true);btn.disabled=false;return}
+  const c=claims.find(x=>x.user_id===id);if(c)c.status=status;
+  renderOfficer();renderPlayer();renderNames();renderAccount();info('Player claim '+status+'.');
+ }));
+}
+$('search').addEventListener('input',renderNames);
+load();
+})();
+</script></body></html>
