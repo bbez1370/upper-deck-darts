@@ -1,0 +1,18 @@
+{
+  "archive_status": "official",
+  "approved_by": "Upper Deck league organizer",
+  "approved_on": "2026-11-03",
+  "historical_seasons": [
+    "2021–22",
+    "2022–23",
+    "2023–24",
+    "2024–25",
+    "2025–26"
+  ],
+  "current_season": "2026–27",
+  "source_of_truth": "LeagueLeader season reports",
+  "identity_rules": "Organizer-approved merges and exclusions held in Supabase league_player_cleanup",
+  "same_season_overlaps": "Combine separate reported performances under approved aliases",
+  "statistics_definition": "Official Upper Deck career averages, game-count-weighted from season report averages; exact throw-weighting unavailable",
+  "audit_trail": "Preserve original LeagueLeader reports and editable cleanup decisions"
+}
