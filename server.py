@@ -85,6 +85,39 @@ def get_standings(rr):
         return result
     return unique(teams),unique(players),unique(cricket)
 
+def historical_player_row_audit(rr):
+    """Detect distinct rows for one player/metric within the same report.
+    Repeated identical rows can be display duplicates; differing rows require
+    human review before any career average is computed.
+    """
+    mode=None
+    keys={}
+    for row in rr:
+        if len(row)<4:continue
+        header=[str(v).strip().lower() for v in row]
+        if header[:3]==['player','team','ppd']:
+            mode='PPD';continue
+        if header[:3]==['player','team','mpr']:
+            mode='MPR';continue
+        if header[:4]==['team','win %','games','wins'] or header[:3]==['team','against','date']:
+            mode=None;continue
+        if mode is None:continue
+        name=str(row[0]).strip()
+        team=str(row[1]).strip()
+        avg=_number(row[2]);games=_number(row[3])
+        if not name or not team or avg is None or games is None or games<=0:continue
+        key=(norm(name),mode)
+        keys.setdefault(key,[]).append((team,avg,int(games)))
+    ambiguous={k for k,values in keys.items() if len(set(values))>1}
+    examples=[{'name':key[0],'metric':key[1],
+              'distinct_rows':[{'team':team,'average':avg,'games':games}
+                               for team,avg,games in sorted(set(values))[:8]]}
+              for key,values in keys.items() if key in ambiguous]
+    return {'ambiguous_keys':ambiguous,
+            'conflicting_rows':len(ambiguous),
+            'exact_repeat_keys':sum(len(rows)>1 and len(set(rows))==1 for rows in keys.values()),
+            'examples':examples[:30]}
+
 def get_games(rr):
     """Location report rows are: team, week, timestamp, win%, games, wins, losses, type, against, at."""
     current=None;mode=False;out=[]
@@ -395,7 +428,12 @@ def historical_careers():
             label=source.get('season') if source.get('verified') and source.get('season') else None
             detected_label=_historical_label(soup,rr)
             teams,p01,pcr=get_standings(rr)
-            record.update(season=label,season_confirmed=bool(label),suggested_season=None if label else detected_label,rows=len(rr),players_01=len(p01),players_cricket=len(pcr))
+            audit=historical_player_row_audit(rr)
+            record.update(season=label,season_confirmed=bool(label),suggested_season=None if label else detected_label,rows=len(rr),players_01=len(p01),players_cricket=len(pcr),
+                          conflicting_player_rows=audit['conflicting_rows'],
+                          repeated_identical_rows=audit['exact_repeat_keys'],
+                          ambiguous_examples=audit['examples'][:12])
+            record['ambiguous_player_metrics_excluded']=0
             if not p01 and not pcr:
                 record['status']='unrecognized report layout'
             elif not label:
@@ -408,6 +446,9 @@ def historical_careers():
                 # Exact normalized player names only; never fuzzy-merge two people.
                 for metric,arr in [('PPD',p01),('MPR',pcr)]:
                     for p in arr:
+                        if (norm(p['name']),metric) in audit['ambiguous_keys']:
+                            record['ambiguous_player_metrics_excluded']+=1
+                            continue
                         games=int(p['games'])
                         if games<=0:continue
                         avg=float(p['ppd'] if metric=='PPD' else p['mpr'])
@@ -458,7 +499,7 @@ def historical_careers():
     output={'updated':datetime.now().astimezone().isoformat(timespec='seconds'),
         'reports':entries,'current':current,'players':players,'player_count':len(players),
         'method':'Season PPD/MPR values weighted by games as an estimate; exact career averages require dart/mark totals.',
-        'warnings':['Confirmed historical season labels are supplied by the league organizer; unlabeled reports are excluded from career totals.','Equal names with changed spellings are not automatically merged.','Repeated report snapshots with identical season labels are deduplicated.']}
+        'warnings':['Confirmed historical season labels are supplied by the league organizer.','Different player rows for the same name and metric in one report are excluded until reviewed.','Names with changed spellings require organizer-approved merge decisions.','Game-count-weighted career statistics are estimates, not exact dart- or mark-weighted averages.']}
     career_cache.update(at=time.time(),payload=output)
     return output
 
