@@ -25,7 +25,7 @@ const $=id=>document.getElementById(id);
 const safe=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const equal=(a,b)=>String(a||'').trim().toLocaleLowerCase()===String(b||'').trim().toLocaleLowerCase();
 const client=window.supabase?.createClient(BASE,KEY);
-let career=null,rawPlayers=[],cleanup=[],profiles=[],claims=[],user=null,officer=false,chosen='',myProfile=null;
+let career=null,rawPlayers=[],cleanup=[],resolutions=[],profiles=[],claims=[],user=null,officer=false,chosen='',myProfile=null;
 function prepareCleanedPlayers(){
  const raw=rawPlayers.map(p=>({...p,seasons:(p.seasons||[]).map(x=>({...x}))}));
  const rules=new Map(cleanup.map(x=>[String(x.source_name).trim().toLowerCase(),x]));
@@ -47,7 +47,7 @@ function prepareCleanedPlayers(){
   const key=target.toLowerCase();
   if(!grouped.has(key))grouped.set(key,{name:target,seasons:[],aliases:[],career:{},conflicts:[]});
   const dest=grouped.get(key);
-  dest.seasons.push(...p.seasons);
+  dest.seasons.push(...p.seasons.map(x=>({...x,source_player:x.source_player||p.name})));
   if(!equal(p.name,target))dest.aliases.push(p.name);
  }
  const result=[...grouped.values()];
@@ -56,9 +56,19 @@ function prepareCleanedPlayers(){
    const matches=p.seasons.filter(r=>r.metric===metric);
    const overlap=new Map();
    for(const row of matches){const key=String(row.season);overlap.set(key,(overlap.get(key)||0)+1)}
-   const conflicts=[...overlap].filter(([_,count])=>count>1).map(([key])=>key);
-   if(conflicts.length)p.conflicts.push(metric+': '+conflicts.join(', '));
-   const valid=matches.filter(x=>!conflicts.includes(String(x.season)));
+   const conflicts=[...overlap].filter(([k,n])=>n>1).map(([k])=>k);
+   const valid=matches.filter(r=>{
+     if(!conflicts.includes(r.season))return true;
+     const decision=resolutions.find(d=>equal(d.canonical_name,p.name)&&d.season===r.season&&d.metric===metric);
+     if(!decision)return false;
+     const candidates=matches.filter(x=>x.season===r.season&&equal(x.source_player,decision.keep_source_name)&&Number(x.report_number)===Number(decision.keep_report_number));
+     return candidates.length===1 && r===candidates[0];
+   });
+   conflicts.forEach(season=>{
+     const decision=resolutions.find(d=>equal(d.canonical_name,p.name)&&d.season===season&&d.metric===metric);
+     const candidates=matches.filter(r=>r.season===season&&decision&&equal(r.source_player,decision.keep_source_name)&&Number(r.report_number)===Number(decision.keep_report_number));
+     if(candidates.length!==1)p.conflicts.push(metric+': '+season);
+   });
    const games=valid.reduce((a,x)=>a+Number(x.games||0),0);
    if(games)p.career[metric]={games,seasons:new Set(valid.map(x=>x.season)).size,
      game_weighted_estimate:Math.round(valid.reduce((a,x)=>a+Number(x.average)*Number(x.games||0),0)/games*100)/100};
@@ -80,12 +90,12 @@ function avatar(p,name){return p?.avatar_path?'<img class="avatar" alt="Profile 
 async function load(){
  if(!client){info('Profile connection library unavailable. Reload the page.',true);return}
  try{
-  const [{data:u},archive,pres,clm,clean]=await Promise.all([client.auth.getUser(),fetch('/api/careers').then(r=>r.json()),client.from('league_member_profiles').select('*'),client.from('league_player_claims').select('*'),client.from('league_player_cleanup').select('*')]);
+  const [{data:u},archive,pres,clm,clean,decisions]=await Promise.all([client.auth.getUser(),fetch('/api/careers').then(r=>r.json()),client.from('league_member_profiles').select('*'),client.from('league_player_claims').select('*'),client.from('league_player_cleanup').select('*'),client.from('league_career_overlap_resolutions').select('*')]);
   if(archive.error)throw Error(archive.error);
-  career=archive;rawPlayers=archive.players||[];cleanup=clean.data||[];user=u?.user||null;
+  career=archive;rawPlayers=archive.players||[];cleanup=clean.data||[];resolutions=decisions.data||[];user=u?.user||null;
   applyCleanup();
   profiles=pres.data||[];claims=clm.data||[];
-  if(pres.error||clm.error||clean.error)info('Some player profile or cleanup records are temporarily unavailable.',true);
+  if(pres.error||clm.error||clean.error||decisions.error)info('Some player profile or cleanup records are temporarily unavailable.',true);
   const mod=await client.from('board_moderators').select('user_id').eq('user_id',user?.id||'00000000-0000-0000-0000-000000000000').maybeSingle();
   officer=!!mod.data;
   myProfile=profiles.find(p=>p.user_id===user?.id)||null;
