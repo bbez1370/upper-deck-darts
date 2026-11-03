@@ -224,11 +224,27 @@ function renderCareerAudit(){
   (r.conflicting_player_rows?' · '+r.conflicting_player_rows+' ambiguous player/metric rows excluded':'')+
   (r.repeated_identical_rows?' · '+r.repeated_identical_rows+' exact repeats detected':'')+'</p>'));
  const mergeBlock=block('Profiles combined by your decisions',merged.map(p=>'<div class="notice small"><b>'+safe(p.name)+'</b> ← '+p.aliases.map(safe).join(', ')+'</div>'));
- const conflictBlock=block('Same-season overlapping records (not used in career averages)',conflicts.map(p=>
-  '<div class="notice error"><b>'+safe(p.name)+'</b> · '+p.conflicts.map(safe).join('; ')+
-  '<details><summary>See affected rows</summary><div class="tablebox"><table><thead><tr><th>Season</th><th>Metric</th><th>Average</th><th>Games</th><th>Team</th></tr></thead><tbody>'+
-  p.seasons.filter(r=>p.conflicts.some(x=>x.startsWith(r.metric+':')&&x.includes(String(r.season)))).map(r=>'<tr><td>'+safe(r.season)+'</td><td>'+safe(r.metric)+'</td><td>'+safe(r.average)+'</td><td>'+safe(r.games)+'</td><td>'+safe(r.team)+'</td></tr>').join('')+
-  '</tbody></table></div></details></div>'));
+
+ const outstanding=conflicts.flatMap(p=>p.conflicts.flatMap(c=>{
+   const metric=c.slice(0,c.indexOf(':')).trim();
+   return c.slice(c.indexOf(':')+1).split(',').map(season=>{
+      season=season.trim();
+      return {player:p.name,season,metric,rows:p.seasons.filter(r=>r.season===season&&r.metric===metric)};
+   });
+ }));
+ const conflictBlock=block('Overlapping records awaiting your review',outstanding.map((v,i)=>
+  '<div class="notice error"><b>'+safe(v.player)+'</b> · '+safe(v.season)+' · '+safe(v.metric)+
+  '<p class="small">Compare these LeagueLeader records and choose only the correct one. No selection is automatic.</p>'+
+  '<div class="tablebox"><table><thead><tr><th>Original player</th><th>Team</th><th>Average</th><th>Games</th><th>Report</th></tr></thead><tbody>'+
+  v.rows.map(r=>'<tr><td>'+safe(r.source_player)+'</td><td>'+safe(r.team)+'</td><td>'+safe(r.average)+'</td><td>'+safe(r.games)+'</td><td>'+safe(r.report_number)+'</td></tr>').join('')+
+  '</tbody></table></div><label class="formfield">Verified record to keep</label>'+
+  '<select data-overlap-choice="'+i+'"><option value="">Select a source record</option>'+
+  v.rows.map((r,j)=>'<option value="'+j+'">'+safe(r.source_player)+' / '+safe(r.team)+' / '+safe(r.average)+' / '+safe(r.games)+' games</option>').join('')+
+  '</select><button class="btn" type="button" data-overlap-save="'+i+'">Keep selected record</button></div>'));
+ const resolvedBlock='<h3>Reviewed overlaps</h3>'+
+ (resolutions.length?resolutions.map((r,i)=>'<div class="notice small">'+safe(r.canonical_name)+' · '+safe(r.season)+' · '+safe(r.metric)+
+ ' → '+safe(r.keep_source_name)+' <button type="button" class="btn" data-overlap-undo="'+i+'">Undo</button></div>').join(''):
+ '<p class="muted small">No overlaps resolved yet.</p>');
  const rowBlock=block('Conflicting player rows within source reports',sourceAmbiguities.flatMap(r=>
   (r.ambiguous_examples||[]).map(x=>'<div class="notice error small">'+safe(r.season||'Unlabeled')+' · '+safe(x.name)+' · '+safe(x.metric)+
     ' ('+(x.distinct_rows?.length||0)+' distinct rows; omitted from career estimate)</div>')));
@@ -251,8 +267,33 @@ function renderCareerAudit(){
  const status=unavailable.length||conflicts.length||sourceAmbiguities.length||missingRules.length?
   '<p class="notice error">Some career records are incomplete or excluded for review. Do not publish a definitive all-time leaderboard yet.</p>':
   '<p class="notice">No overlaps or source ambiguities detected in the data currently available. This does not independently verify all league averages.</p>';
- container.innerHTML=summary+status+sourceBlock+mergeBlock+conflictBlock+rowBlock+mapBlock+leaderboardPreview+
+ container.innerHTML=summary+status+sourceBlock+mergeBlock+conflictBlock+resolvedBlock+rowBlock+mapBlock+leaderboardPreview+
    '<p class="muted small">The original LeagueLeader reports remain unchanged. Career averages are estimates weighted by game counts; exact career PPD/MPR requires dart and mark totals. Hidden names are not displayed here unless their cleanup rule needs attention.</p>';
+ container.querySelectorAll('[data-overlap-save]').forEach(btn=>btn.addEventListener('click',async()=>{
+  const i=Number(btn.dataset.overlapSave),group=outstanding[i];
+  const choice=container.querySelector('[data-overlap-choice="'+i+'"]');
+  if(!group||!choice||choice.value===''){info('Choose one verified row first.',true);return}
+  const row=group.rows[Number(choice.value)];
+  if(!row||!confirm('Retain '+row.source_player+' / '+row.team+' / '+row.games+' games for '+group.player+' in '+group.season+'?'))return;
+  btn.disabled=true;
+  const d={canonical_name:group.player,season:group.season,metric:group.metric,
+    keep_source_name:row.source_player,keep_report_number:row.report_number,
+    updated_by:user.id,updated_at:new Date().toISOString()};
+  const {error}=await client.from('league_career_overlap_resolutions').upsert(d,{onConflict:'canonical_name,season,metric'});
+  if(error){info('Save failed: '+error.message,true);btn.disabled=false;return}
+  resolutions=resolutions.filter(x=>!(equal(x.canonical_name,d.canonical_name)&&x.season===d.season&&x.metric===d.metric)).concat(d);
+  applyCleanup();renderNames();renderPlayer();renderCareerAudit();info('Verified record saved, career estimate updated.');
+ }));
+ container.querySelectorAll('[data-overlap-undo]').forEach(btn=>btn.addEventListener('click',async()=>{
+  const d=resolutions[Number(btn.dataset.overlapUndo)];
+  if(!d||!confirm('Undo the selected record for '+d.canonical_name+'?'))return;
+  btn.disabled=true;
+  const {error}=await client.from('league_career_overlap_resolutions').delete().eq('canonical_name',d.canonical_name).eq('season',d.season).eq('metric',d.metric);
+  if(error){info(error.message,true);btn.disabled=false;return}
+  resolutions=resolutions.filter(x=>x!==d);
+  applyCleanup();renderNames();renderPlayer();renderCareerAudit();info('Overlap resolution undone.');
+ }));
+
 }
 function renderCleanup(){
  $('cleanupPanel').hidden=!officer;
