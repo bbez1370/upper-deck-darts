@@ -15,7 +15,9 @@
 <div id="cleanupTargetWrap"><label class="formfield" for="cleanupTarget">Keep this player record</label><select id="cleanupTarget"></select></div>
 <label class="formfield" for="cleanupNotes">Reason or notes (optional)</label><input id="cleanupNotes" maxlength="300" placeholder="e.g. Same player, alternate spelling">
 <button id="cleanupSave" class="btn primary" type="submit">Save cleanup decision</button></form>
-<h3>Existing cleanup decisions</h3><div id="cleanupDecisions"></div><p class="small muted">If two merged records overlap in the same season and metric, career averages omit the conflicting rows until reviewed. This prevents silent double-counting.</p></article><article class="panel" id="moderation" hidden><h2>Officer: Player identity approvals</h2><p class="muted small">Only approve a player when you know this account belongs to that person.</p><div id="claims"></div></article></div></div></main>
+<h3>Existing cleanup decisions</h3><div id="cleanupDecisions"></div><p class="small muted">If two merged records overlap in the same season and metric, career averages omit the conflicting rows until reviewed. This prevents silent double-counting.</p></article><article class="panel" id="careerAuditPanel" hidden><h2>Officer: Career statistics audit</h2>
+<p class="muted small">Checks source completeness, player-name merges, same-season overlaps and report rows that cannot be safely combined. This is a review report, not a claim that every historical average has been independently verified.</p>
+<div id="careerAuditResults" role="status"></div></article><article class="panel" id="moderation" hidden><h2>Officer: Player identity approvals</h2><p class="muted small">Only approve a player when you know this account belongs to that person.</p><div id="claims"></div></article></div></div></main>
 <script>
 (function(){
 const BASE='https://nnlfzmdranazqujklkrm.supabase.co',KEY='sb_publishable_U3i_JSjunfsbtXEx8Wsuzw_LTQ9PPhb';
@@ -87,7 +89,7 @@ async function load(){
   const mod=await client.from('board_moderators').select('user_id').eq('user_id',user?.id||'00000000-0000-0000-0000-000000000000').maybeSingle();
   officer=!!mod.data;
   myProfile=profiles.find(p=>p.user_id===user?.id)||null;
-  renderNames();renderCoverage();renderAccount();renderOfficer();renderCleanup();
+  renderNames();renderCoverage();renderAccount();renderOfficer();renderCleanup();renderCareerAudit();
   const url=new URL(location.href),requested=url.searchParams.get('player');
   chosen=playerFor(requested)?.name||career.players?.[0]?.name||'';
   renderPlayer();
@@ -187,6 +189,48 @@ function renderOfficer(){
   renderOfficer();renderPlayer();renderNames();renderAccount();info('Player claim '+status+'.');
  }));
 }
+function renderCareerAudit(){
+ $('careerAuditPanel').hidden=!officer;
+ if(!officer)return;
+ const container=$('careerAuditResults');
+ const reports=career?.reports||[];
+ const unavailable=reports.filter(r=>r.status!=='parsed');
+ const sourceAmbiguities=reports.filter(r=>Number(r.conflicting_player_rows)>0);
+ const people=career?.players||[];
+ const merged=people.filter(p=>p.aliases?.length);
+ const conflicts=people.filter(p=>p.conflicts?.length);
+ const rawNames=new Set(rawPlayers.map(p=>p.name.toLowerCase()));
+ const missingRules=cleanup.filter(r=>!rawNames.has(r.source_name.toLowerCase())||
+   r.action==='merge'&&!rawNames.has(String(r.target_name||'').toLowerCase()));
+ const fmt=n=>Number(n||0);
+ const summary='<div class="cardgrid">'+
+  '<div class="card"><span class="small">Historical reports parsed</span><strong>'+reports.filter(r=>r.status==='parsed').length+' / '+reports.length+'</strong></div>'+
+  '<div class="card"><span class="small">Merged career profiles</span><strong>'+merged.length+'</strong></div>'+
+  '<div class="card"><span class="small">Unresolved overlaps</span><strong>'+conflicts.length+'</strong></div>'+
+  '<div class="card"><span class="small">Source-row ambiguities</span><strong>'+sourceAmbiguities.reduce((n,r)=>n+fmt(r.conflicting_player_rows),0)+'</strong></div></div>';
+ const block=(title,rows)=>'<h3>'+title+'</h3>'+(rows.length?rows.join(''):'<p class="small muted">No issues detected in the records currently loaded.</p>');
+ const sourceBlock=block('Historical source coverage',reports.map(r=>'<p class="small">'+
+  safe(r.season||'Unlabeled')+': '+safe(r.status)+
+  (r.conflicting_player_rows?' · '+r.conflicting_player_rows+' ambiguous player/metric rows excluded':'')+
+  (r.repeated_identical_rows?' · '+r.repeated_identical_rows+' exact repeats detected':'')+'</p>'));
+ const mergeBlock=block('Profiles combined by your decisions',merged.map(p=>'<div class="notice small"><b>'+safe(p.name)+'</b> ← '+p.aliases.map(safe).join(', ')+'</div>'));
+ const conflictBlock=block('Same-season overlapping records (not used in career averages)',conflicts.map(p=>
+  '<div class="notice error"><b>'+safe(p.name)+'</b> · '+p.conflicts.map(safe).join('; ')+
+  '<details><summary>See affected rows</summary><div class="tablebox"><table><thead><tr><th>Season</th><th>Metric</th><th>Average</th><th>Games</th><th>Team</th></tr></thead><tbody>'+
+  p.seasons.filter(r=>p.conflicts.some(x=>x.startsWith(r.metric+':')&&x.includes(String(r.season)))).map(r=>'<tr><td>'+safe(r.season)+'</td><td>'+safe(r.metric)+'</td><td>'+safe(r.average)+'</td><td>'+safe(r.games)+'</td><td>'+safe(r.team)+'</td></tr>').join('')+
+  '</tbody></table></div></details></div>'));
+ const rowBlock=block('Conflicting player rows within source reports',sourceAmbiguities.flatMap(r=>
+  (r.ambiguous_examples||[]).map(x=>'<div class="notice error small">'+safe(r.season||'Unlabeled')+' · '+safe(x.name)+' · '+safe(x.metric)+
+    ' ('+(x.distinct_rows?.length||0)+' distinct rows; omitted from career estimate)</div>')));
+ const mapBlock=block('Cleanup rules needing attention',missingRules.map(r=>
+   '<div class="notice error small">'+safe(r.source_name)+' · '+safe(r.action)+' · '+safe(r.target_name||'no target')+
+   ' (record name not found in the currently loaded source data)</div>'));
+ const status=unavailable.length||conflicts.length||sourceAmbiguities.length||missingRules.length?
+  '<p class="notice error">Some career records are incomplete or excluded for review. Do not publish a definitive all-time leaderboard yet.</p>':
+  '<p class="notice">No overlaps or source ambiguities detected in the data currently available. This does not independently verify all league averages.</p>';
+ container.innerHTML=summary+status+sourceBlock+mergeBlock+conflictBlock+rowBlock+mapBlock+
+   '<p class="muted small">The original LeagueLeader reports remain unchanged. Career averages are estimates weighted by game counts; exact career PPD/MPR requires dart and mark totals. Hidden names are not displayed here unless their cleanup rule needs attention.</p>';
+}
 function renderCleanup(){
  $('cleanupPanel').hidden=!officer;
  if(!officer)return;
@@ -208,7 +252,7 @@ function renderCleanup(){
   const {error}=await client.from('league_player_cleanup').delete().eq('source_name',btn.dataset.undo);
   if(error){$('cleanupMessage').textContent=error.message;btn.disabled=false;return}
   cleanup=cleanup.filter(x=>x.source_name!==btn.dataset.undo);
-  applyCleanup();renderCleanup();renderNames();renderPlayer();renderAccount();
+  applyCleanup();renderCleanup();renderNames();renderPlayer();renderAccount();renderCareerAudit();
   $('cleanupMessage').textContent='Restored original player record.';
  }));
 }
@@ -234,7 +278,7 @@ $('cleanupForm').addEventListener('submit',async e=>{
  const {error}=await client.from('league_player_cleanup').upsert(row,{onConflict:'source_name'});
  if(error){$('cleanupMessage').textContent='Could not save: '+error.message;save.disabled=false;return}
  cleanup=cleanup.filter(x=>!equal(x.source_name,source)).concat(row);
- applyCleanup();renderCleanup();renderNames();renderPlayer();renderAccount();
+ applyCleanup();renderCleanup();renderNames();renderPlayer();renderAccount();renderCareerAudit();
  $('cleanupMessage').textContent='Saved. Public career directory updated; the underlying LeagueLeader records remain unchanged.';
  save.disabled=false;
 });
