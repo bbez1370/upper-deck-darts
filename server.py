@@ -147,4 +147,25 @@ def live():
     except Exception as e:return jsonify({'error':str(e),'updated':cache['data']['updated'] if cache['data'] else None,'stale':cache['data']}),503
 @app.route('/api/debug')
 def debug():return jsonify({'standings':report_diagnostic(STANDINGS),'games':report_diagnostic(GAMES)})
+
+# Additional public LeagueLeader report for player-level analytics.
+PLAYER_DETAIL='https://leagueleader.net/sharedreport.php?operatorid=497&code=d512d685-0570-4906-ad06-8c03b903b500'
+@app.route('/api/player-report-inspect')
+def player_report_inspect():
+    """Return bounded table samples to verify the public report schema before using player-level statistics."""
+    try:
+        response,soup=fetch(PLAYER_DETAIL)
+        rr=rows(soup)
+        samples=[]
+        keywords=('player','date','ppd','mpr','highest','out','wins','week','cricket','301','501')
+        for idx,row in enumerate(rr):
+            joined=' '.join(str(x) for x in row).lower()
+            if any(word in joined for word in keywords) and len(samples)<24:
+                samples.append({'row':idx,'columns':row[:20],'following':rr[idx+1:idx+3]})
+        return jsonify({'available':True,'status':response.status_code,'bytes':len(response.content),
+                        'title':soup.title.get_text(' ',strip=True)[:200] if soup.title else '',
+                        'row_count':len(rr),'first_rows':rr[:12],'section_samples':samples})
+    except Exception as error:
+        return jsonify({'available':False,'error':str(error)[:250]}),502
+
 if __name__=='__main__':app.run(host='0.0.0.0',port=8000,debug=False)
