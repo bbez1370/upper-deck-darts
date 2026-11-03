@@ -422,7 +422,9 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const uncertain=p.games.filter(g=>g.candidate_weeks?.length).length;
       const list=(p.games||[]).map((g,i)=>row([
         String(i+1),safe(g.game||g.metric),safe(g.metric),Number(g.rate).toFixed(2),g.win?'Won':'Lost',
-        g.inferred_week!=null?'Week '+g.inferred_week+' · '+safe(g.inferred_date||''):
+        g.inferred_week!=null?'Week '+g.inferred_week+' · '+safe(g.inferred_date||'')+
+          (g.inferred_game_number?' · Game '+g.inferred_game_number:'')+
+          (g.inferred_decider?' · Deciding Game 7':''):
           g.candidate_weeks?.length?'Possible weeks: '+g.candidate_weeks.join(', '):'Not assigned',
         safe(Object.entries(g.achievements||{}).map(([k,v])=>k+' ×'+v).join(', ')||'—')
       ]));
@@ -431,7 +433,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
           (payload.joe_last_01_check.matches_user_reported_12_82?'Matches your reported 12.82 PPD.':'Does not match your reported 12.82 PPD. Review the sequence.')+
           ' Week: '+safe(payload.joe_last_01_check.inferred_week||'not uniquely resolved')+'.</div>':'';
       root.innerHTML=createSelect()+
-        '<div class="anote">Individual LeagueLeader rows display Week 0. Using the report-order clue, we compare each ordered player game with dated team results, matching game format and win/loss. Dates are <b>inferred</b> and only displayed when every compatible alignment agrees. These are not verified timestamps.</div>'+
+        '<div class="anote">League game order is 301, Cricket, 501, Cricket, 701, Cricket, 501. Individual LeagueLeader rows display Week 0. Using the report-order clue, we compare each ordered player game with dated team results, matching game format and win/loss. Dates are <b>inferred</b> and only displayed when every compatible alignment agrees. These are not verified timestamps.</div>'+
         benchmark+summary+summary2+
         '<h3>Inferred weekly trends</h3><p class="mini muted">'+assigned+' of '+p.games.length+' individual games have a uniquely inferred week; '+uncertain+' have multiple possibilities. Unmatched games are omitted from weekly averages.</p>'+
         chart("PPD","01 PPD")+chart("MPR","Cricket MPR")+
