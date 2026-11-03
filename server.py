@@ -392,11 +392,16 @@ def historical_careers():
             if isinstance(fetched_result,Exception):raise fetched_result
             _,soup=fetched_result
             rr=rows(soup)
-            label=_historical_label(soup,rr)
+            label=source.get('season') if source.get('verified') and source.get('season') else None
+            detected_label=_historical_label(soup,rr)
             teams,p01,pcr=get_standings(rr)
-            record.update(season=label,rows=len(rr),players_01=len(p01),players_cricket=len(pcr))
+            record.update(season=label,season_confirmed=bool(label),suggested_season=None if label else detected_label,rows=len(rr),players_01=len(p01),players_cricket=len(pcr))
             if not p01 and not pcr:
                 record['status']='unrecognized report layout'
+            elif not label:
+                # Report can be read but its season has not been confirmed.
+                # Exclude from career totals to avoid double-counting a season.
+                record['status']='awaiting season confirmation'
             else:
                 record['status']='parsed'
                 # Deduplicate repeated source snapshots of the same player's season.
@@ -453,7 +458,7 @@ def historical_careers():
     output={'updated':datetime.now().astimezone().isoformat(timespec='seconds'),
         'reports':entries,'current':current,'players':players,'player_count':len(players),
         'method':'Season PPD/MPR values weighted by games as an estimate; exact career averages require dart/mark totals.',
-        'warnings':['Historical report labels are inferred from report content, not independently verified.','Equal names with changed spellings are not automatically merged.','Repeated report snapshots with identical season labels are deduplicated.']}
+        'warnings':['Confirmed historical season labels are supplied by the league organizer; unlabeled reports are excluded from career totals.','Equal names with changed spellings are not automatically merged.','Repeated report snapshots with identical season labels are deduplicated.']}
     career_cache.update(at=time.time(),payload=output)
     return output
 
