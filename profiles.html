@@ -8,7 +8,7 @@
 <body><header><div><a href="/">← Back to Upper Deck</a><p class="eyebrow">2021 to present · League history</p><h1>Official Player Records</h1><p class="muted">Upper Deck's official player history from the inaugural 2021–22 season through today.</p></div></header>
 <main><p id="status" class="notice" role="status" aria-live="polite">Loading player records…</p>
 <div class="layout"><aside><div class="panel"><h2>Find a player</h2><input id="search" aria-label="Search players" placeholder="Search player names"><p id="count" class="muted small"></p><div id="names" class="list"></div></div><div class="panel"><h2>Your profile</h2><div id="account"></div></div></aside>
-<div><article id="view" class="panel"><p class="muted">Choose a player to see their career.</p></article><article class="panel"><h2>Official season archive</h2><div id="coverage" class="muted">Checking reports…</div></article><article class="panel" id="cleanupPanel" hidden><h2>Officer: Clean up player history</h2><p class="muted small">Merge an alternate report name into the player who should keep the career record, or hide a player from the career directory. Original LeagueLeader data is never deleted. All edits can be undone.</p><p id="cleanupMessage" class="notice" role="status">No cleanup edits yet.</p>
+<div><article id="view" class="panel"><p class="muted">Choose a player to see their career.</p></article><article class="panel"><h2>Official season archive</h2><div id="coverage" class="muted">Checking reports…</div></article><article class="panel" id="officialLeaderboard"><h2>🏆 Official career leaderboards</h2><p class="muted small">Career PPD and MPR use the Upper Deck approved game-weighted method, with a minimum of 20 recorded games for each ranking. Original season statistics remain available in player profiles.</p><div id="officialRankings">Loading official rankings…</div></article><article class="panel" id="cleanupPanel" hidden><h2>Officer: Clean up player history</h2><p class="muted small">Merge an alternate report name into the player who should keep the career record, or hide a player from the career directory. Original LeagueLeader data is never deleted. All edits can be undone.</p><p id="cleanupMessage" class="notice" role="status">No cleanup edits yet.</p>
 <form id="cleanupForm">
 <label class="formfield" for="cleanupSource">Record to merge or hide</label><select id="cleanupSource" required></select>
 <label class="formfield" for="cleanupAction">Action</label><select id="cleanupAction"><option value="merge">Merge into another player</option><option value="exclude">Hide from career directory</option></select>
@@ -108,7 +108,7 @@ async function load(){
   const mod=await client.from('board_moderators').select('user_id').eq('user_id',user?.id||'00000000-0000-0000-0000-000000000000').maybeSingle();
   officer=!!mod.data;
   myProfile=profiles.find(p=>p.user_id===user?.id)||null;
-  renderNames();renderCoverage();renderAccount();renderOfficer();renderCleanup();renderCareerAudit();
+  renderNames();renderCoverage();renderAccount();renderOfficer();renderCleanup();renderCareerAudit();renderOfficialRankings();
   const url=new URL(location.href),requested=url.searchParams.get('player');
   chosen=playerFor(requested)?.name||career.players?.[0]?.name||'';
   renderPlayer();
@@ -209,6 +209,23 @@ function renderOfficer(){
   renderOfficer();renderPlayer();renderNames();renderAccount();info('Player claim '+status+'.');
  }));
 }
+function renderOfficialRankings(){
+ const el=$('officialRankings');if(!career||!el)return;
+ const incomplete=(career.reports||[]).some(x=>x.status!=='parsed');
+ const people=career.players||[];
+ if(incomplete){el.innerHTML='<p class="notice error">Some historical reports are temporarily unavailable. Rankings will display once all official seasons are loaded.</p>';return}
+ const leaderboard=metric=>{
+  const ranked=people.filter(p=>Number(p.career?.[metric]?.games||0)>=20 &&
+      !(p.conflicts||[]).some(c=>c.startsWith(metric+':')))
+    .sort((a,b)=>Number(b.career[metric].game_weighted_estimate)-Number(a.career[metric].game_weighted_estimate))
+    .slice(0,10);
+  return '<div><h3>'+metric+' Leaders</h3>'+
+    (ranked.length?'<div class="tablebox"><table><thead><tr><th>Rank</th><th>Player</th><th>'+metric+'</th><th>Games</th></tr></thead><tbody>'+
+    ranked.map((p,i)=>'<tr><td>'+(i+1)+'</td><td><a href="/profiles?player='+encodeURIComponent(p.name)+'">'+safe(p.name)+'</a></td><td>'+Number(p.career[metric].game_weighted_estimate).toFixed(2)+'</td><td>'+p.career[metric].games+'</td></tr>').join('')+
+    '</tbody></table></div>':'<p class="small muted">No qualifying stats available.</p>')+'</div>';
+ };
+ el.innerHTML=leaderboard('PPD')+leaderboard('MPR');
+}
 function renderCareerAudit(){
  $('careerAuditPanel').hidden=!officer;
  if(!officer)return;
@@ -295,7 +312,7 @@ function renderCleanup(){
   const {error}=await client.from('league_player_cleanup').delete().eq('source_name',btn.dataset.undo);
   if(error){$('cleanupMessage').textContent=error.message;btn.disabled=false;return}
   cleanup=cleanup.filter(x=>x.source_name!==btn.dataset.undo);
-  applyCleanup();renderCleanup();renderNames();renderPlayer();renderAccount();renderCareerAudit();
+  applyCleanup();renderCleanup();renderNames();renderPlayer();renderAccount();renderCareerAudit();renderOfficialRankings();
   $('cleanupMessage').textContent='Restored original player record.';
  }));
 }
@@ -321,7 +338,7 @@ $('cleanupForm').addEventListener('submit',async e=>{
  const {error}=await client.from('league_player_cleanup').upsert(row,{onConflict:'source_name'});
  if(error){$('cleanupMessage').textContent='Could not save: '+error.message;save.disabled=false;return}
  cleanup=cleanup.filter(x=>!equal(x.source_name,source)).concat(row);
- applyCleanup();renderCleanup();renderNames();renderPlayer();renderAccount();renderCareerAudit();
+ applyCleanup();renderCleanup();renderNames();renderPlayer();renderAccount();renderCareerAudit();renderOfficialRankings();
  $('cleanupMessage').textContent='Saved. Public career directory updated; the underlying LeagueLeader records remain unchanged.';
  save.disabled=false;
 });
