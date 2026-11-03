@@ -91,7 +91,14 @@ def report_diagnostic(url):
         response,soup=fetch(url)
         rr=rows(soup)
         body=' '.join(soup.stripped_strings)
-        return {'status':response.status_code,'contentType':response.headers.get('content-type',''),'bytes':len(response.content),'title':soup.title.get_text(' ',strip=True)[:130] if soup.title else '', 'tableRows':len(rr),'firstRows':rr[:4], 'hasTeamStandings':'Team Standings' in body, 'hasDivision':'Division:' in body,'startsWith':body[:250]}
+        headings=('Team Standings','Last Match Results','All X01','All Cricket','Division:','Week','Game')
+        found=[]
+        for idx,row in enumerate(rr):
+            val=' '.join(row)
+            if any(h.lower() in val.lower() for h in headings):
+                found.append({'row':idx,'nearby':rr[max(0,idx-1):min(len(rr),idx+7)]})
+                if len(found)>=14:break
+        return {'status':response.status_code,'contentType':response.headers.get('content-type',''),'bytes':len(response.content),'title':soup.title.get_text(' ',strip=True)[:130] if soup.title else '', 'tableRows':len(rr),'firstRows':rr[:4], 'sampleRows':rr[4:18], 'sectionSamples':found, 'hasTeamStandings':'Team Standings' in body, 'hasDivision':'Division:' in body,'startsWith':body[:250]}
     except Exception as e:return {'error':str(e)[:300]}
 
 def refresh():
