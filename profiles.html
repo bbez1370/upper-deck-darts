@@ -45,7 +45,7 @@ function prepareCleanedPlayers(){
  for(const p of raw){
   const target=canonical(p.name);if(!target)continue;
   const key=target.toLowerCase();
-  if(!grouped.has(key))grouped.set(key,{name:target,seasons:[],aliases:[],career:{},conflicts:[]});
+  if(!grouped.has(key))grouped.set(key,{name:target,seasons:[],aliases:[],career:{},conflicts:[],combinedGroups:[]});
   const dest=grouped.get(key);
   dest.seasons.push(...p.seasons.map(x=>({...x,source_player:x.source_player||p.name})));
   if(!equal(p.name,target))dest.aliases.push(p.name);
@@ -53,25 +53,34 @@ function prepareCleanedPlayers(){
  const result=[...grouped.values()];
  for(const p of result){
   for(const metric of ['PPD','MPR']){
-   const matches=p.seasons.filter(r=>r.metric===metric);
-   const overlap=new Map();
-   for(const row of matches){const key=String(row.season);overlap.set(key,(overlap.get(key)||0)+1)}
-   const conflicts=[...overlap].filter(([k,n])=>n>1).map(([k])=>k);
-   const valid=matches.filter(r=>{
-     if(!conflicts.includes(r.season))return true;
-     const decision=resolutions.find(d=>equal(d.canonical_name,p.name)&&d.season===r.season&&d.metric===metric);
-     if(!decision)return false;
-     const candidates=matches.filter(x=>x.season===r.season&&equal(x.source_player,decision.keep_source_name)&&Number(x.report_number)===Number(decision.keep_report_number));
-     return candidates.length===1 && r===candidates[0];
-   });
-   conflicts.forEach(season=>{
-     const decision=resolutions.find(d=>equal(d.canonical_name,p.name)&&d.season===season&&d.metric===metric);
-     const candidates=matches.filter(r=>r.season===season&&decision&&equal(r.source_player,decision.keep_source_name)&&Number(r.report_number)===Number(decision.keep_report_number));
-     if(candidates.length!==1)p.conflicts.push(metric+': '+season);
-   });
-   const games=valid.reduce((a,x)=>a+Number(x.games||0),0);
-   if(games)p.career[metric]={games,seasons:new Set(valid.map(x=>x.season)).size,
-     game_weighted_estimate:Math.round(valid.reduce((a,x)=>a+Number(x.average)*Number(x.games||0),0)/games*100)/100};
+   const rows=p.seasons.filter(r=>r.metric===metric);
+   const bySeason=new Map();
+   rows.forEach(r=>{const key=String(r.season);if(!bySeason.has(key))bySeason.set(key,[]);bySeason.get(key).push(r)});
+   const included=[];
+   for(const [season,group] of bySeason){
+    if(group.length===1){included.push(group[0]);continue}
+    // Organizer confirmed that overlapping historical aliases represent
+    // separate performances by the same person. Add each game count once.
+    // Never combine repeated rows from the SAME source player, and never
+    // infer a merge that was not explicitly approved in Cleanup.
+    const distinctSources=new Set(group.map(r=>String(r.source_player||'').trim().toLowerCase()));
+    const manuallyMerged=p.aliases.length>0;
+    const gamesValid=group.every(r=>Number.isFinite(Number(r.games))&&Number(r.games)>0&&Number.isFinite(Number(r.average)));
+    if(manuallyMerged&&distinctSources.size===group.length&&gamesValid){
+      included.push(...group);
+      const totalGames=group.reduce((n,r)=>n+Number(r.games),0);
+      p.combinedGroups.push({season,metric,games:totalGames,
+        game_weighted_estimate:Math.round(group.reduce((n,r)=>n+Number(r.average)*Number(r.games),0)/totalGames*100)/100,
+        rows:group.map(r=>({...r}))});
+    }else{
+      p.conflicts.push(metric+': '+season);
+    }
+   }
+   const games=included.reduce((n,r)=>n+Number(r.games),0);
+   if(games)p.career[metric]={
+     games,seasons:new Set(included.map(r=>r.season)).size,
+     game_weighted_estimate:Math.round(included.reduce((n,r)=>n+Number(r.average)*Number(r.games),0)/games*100)/100
+   };
   }
  }
  return result.sort((a,b)=>a.name.localeCompare(b.name));
