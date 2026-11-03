@@ -45,7 +45,7 @@ async function load(){
 }
 function renderCoverage(){
  const r=career?.reports||[];
- $('coverage').innerHTML='<p class="small">Season names are inferred from report headings. Unavailable or unrecognized reports are not included in career estimates.</p>'+
+ $('coverage').innerHTML='<p class="small">Confirmed season labels come from the league organizer. Unlabeled, unavailable or unrecognized reports are excluded from career estimates.</p>'+
  r.map(x=>'<div style="padding:8px 0;border-bottom:1px solid #355046"><span class="tag">Report '+x.report_number+'</span> '+safe(x.season||'Season not yet confirmed')+' · '+safe(x.status)+' · '+(x.players_01||0)+' 01 / '+(x.players_cricket||0)+' Cricket entries <a href="'+safe(x.url)+'" target="_blank" rel="noopener">Source</a></div>').join('')+
  '<p class="small muted">Current 2026–27 season: '+safe(career?.current?.status||'unavailable')+'. Profiles match exact recorded names only. Officers must approve account claims.</p>';
 }
