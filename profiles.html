@@ -222,13 +222,26 @@ function renderCareerAudit(){
  const rowBlock=block('Conflicting player rows within source reports',sourceAmbiguities.flatMap(r=>
   (r.ambiguous_examples||[]).map(x=>'<div class="notice error small">'+safe(r.season||'Unlabeled')+' · '+safe(x.name)+' · '+safe(x.metric)+
     ' ('+(x.distinct_rows?.length||0)+' distinct rows; omitted from career estimate)</div>')));
+ const previewMetric=(metric)=>{
+  const eligible=people.filter(p=>!p.conflicts?.some(c=>c.startsWith(metric+':'))&&
+    p.career?.[metric]?.games>=20)
+    .sort((a,b)=>b.career[metric].game_weighted_estimate-a.career[metric].game_weighted_estimate).slice(0,10);
+  return '<h4>'+metric+' (minimum 20 games)</h4>'+
+   (eligible.length?'<div class="tablebox"><table><thead><tr><th>Player</th><th>Estimated average</th><th>Games</th></tr></thead><tbody>'+
+    eligible.map(p=>'<tr><td>'+safe(p.name)+'</td><td>'+safe(p.career[metric].game_weighted_estimate)+'</td><td>'+safe(p.career[metric].games)+'</td></tr>').join('')+
+    '</tbody></table></div>':'<p class="small muted">No eligible records in the currently parsed data.</p>');
+ };
+ const leaderboardPreview='<h3>Private leaderboard preview</h3><p class="small muted">These are game-weighted estimated averages, not official league rankings. Players with conflicting '+ 
+  'records in a metric are excluded. The preview is only for moderators, and incomplete report coverage invalidates it.</p>'+
+  (unavailable.length?'<p class="notice error">Leaderboard preview withheld: one or more historical reports are unavailable or unparsed.</p>':
+   previewMetric('PPD')+previewMetric('MPR'));
  const mapBlock=block('Cleanup rules needing attention',missingRules.map(r=>
    '<div class="notice error small">'+safe(r.source_name)+' · '+safe(r.action)+' · '+safe(r.target_name||'no target')+
    ' (record name not found in the currently loaded source data)</div>'));
  const status=unavailable.length||conflicts.length||sourceAmbiguities.length||missingRules.length?
   '<p class="notice error">Some career records are incomplete or excluded for review. Do not publish a definitive all-time leaderboard yet.</p>':
   '<p class="notice">No overlaps or source ambiguities detected in the data currently available. This does not independently verify all league averages.</p>';
- container.innerHTML=summary+status+sourceBlock+mergeBlock+conflictBlock+rowBlock+mapBlock+
+ container.innerHTML=summary+status+sourceBlock+mergeBlock+conflictBlock+rowBlock+mapBlock+leaderboardPreview+
    '<p class="muted small">The original LeagueLeader reports remain unchanged. Career averages are estimates weighted by game counts; exact career PPD/MPR requires dart and mark totals. Hidden names are not displayed here unless their cleanup rule needs attention.</p>';
 }
 function renderCleanup(){
