@@ -149,9 +149,12 @@ function renderNames(){
  $('names').innerHTML=people.map(p=>{
   const current=seasonGroup(p,'2026–27');
   const stat=current.PPD?' · '+current.PPD.average.toFixed(2)+' PPD':'';
+  const profile=profileFor(p.name);
+  const face=profile?.avatar_path?'<img class="directory-avatar" alt="" loading="lazy" src="'+safe(photo(profile.avatar_path))+'">':
+   '<span class="directory-avatar placeholder" aria-hidden="true">'+safe(head(p.name))+'</span>';
   return '<button class="player '+(equal(p.name,chosen)?'active':'')+'" data-name="'+safe(p.name)+'" aria-label="View '+safe(p.name)+' profile">'+
-   '<b>'+safe(p.name)+'</b>'+(profileFor(p.name)?' <span aria-label="Personalized profile">📸</span>':'')+
-   '<div class="small muted">'+new Set(p.seasons.map(s=>s.season)).size+' seasons'+stat+'</div></button>';
+   '<span class="directory-player-main">'+face+'<span class="directory-player-text"><b>'+safe(profile?.display_name||p.name)+'</b>'+
+   '<span class="small muted">'+new Set(p.seasons.map(s=>s.season)).size+' seasons'+stat+'</span></span></span></button>';
  }).join('')||'<p class="muted">No matching players. Try another name or historical alias.</p>';
  $('names').querySelectorAll('[data-name]').forEach(b=>b.addEventListener('click',()=>{
   chosen=b.dataset.name;playerTab='overview';
