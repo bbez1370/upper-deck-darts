@@ -352,7 +352,10 @@ function renderWeeklyTrends(){
     '<p>Scheduled weeks with verified seven-game team results: '+safe((d.team_match_weeks||[]).join(', ')||'None')+
     ' · Individual 01 games: '+Number(d.player_01_games||0)+
     ' · Cricket games: '+Number(d.player_cricket_games||0)+
-    ' · Mapped: '+Number(d.assigned||0)+' · Unassigned: '+Number(d.unassigned||0)+'</p>'+
+    ' · Mapped: '+Number(d.assigned_final??d.assigned??0)+' · Unassigned: '+Number(d.unassigned_final??d.unassigned??0)+'</p>'+
+    (d.week_3_block_status?'<p>Week 3 block: '+safe(d.week_3_block_status)+'</p>':'')+
+    (d.week_3_block_companions_assigned!=null?'<p>Week 3 companion games added: '+Number(d.week_3_block_companions_assigned)+'</p>':'')+
+    (d.chronology_assigned!=null?'<p>Complete-attendance chronology mapped: '+Number(d.chronology_assigned)+'</p>':'')+
     '<p>Matching method: '+safe(d.method||'Not available')+'</p></div>';
   }).join('')+'</details>'+
   '<div class="weekgrid">'+
