@@ -129,10 +129,21 @@ function renderCoverage(){
 }
 function renderNames(){
  const query=$('search').value.trim().toLowerCase();
- const people=(career?.players||[]).filter(p=>p.name.toLowerCase().includes(query));
- $('count').textContent=people.length+' matching players';
- $('names').innerHTML=people.map(p=>'<button class="player '+(equal(p.name,chosen)?'active':'')+'" data-name="'+safe(p.name)+'">'+safe(p.name)+' '+(profileFor(p.name)?'📸':'')+'<div class="small muted">'+new Set(p.seasons.map(s=>s.season)).size+' season(s) recorded</div></button>').join('')||'<p class="muted">No matching player names.</p>';
- $('names').querySelectorAll('[data-name]').forEach(b=>b.addEventListener('click',()=>{chosen=b.dataset.name;history.replaceState(null,'','?player='+encodeURIComponent(chosen));renderNames();renderPlayer()}));
+ const people=(career?.players||[]).filter(p=>(p.name+' '+(p.aliases||[]).join(' ')).toLowerCase().includes(query));
+ $('count').textContent=people.length+' player'+(people.length===1?'':'s')+' found';
+ $('names').innerHTML=people.map(p=>{
+  const current=seasonGroup(p,'2026–27');
+  const stat=current.PPD?' · '+current.PPD.average.toFixed(2)+' PPD':'';
+  return '<button class="player '+(equal(p.name,chosen)?'active':'')+'" data-name="'+safe(p.name)+'" aria-label="View '+safe(p.name)+' profile">'+
+   '<b>'+safe(p.name)+'</b>'+(profileFor(p.name)?' <span aria-label="Personalized profile">📸</span>':'')+
+   '<div class="small muted">'+new Set(p.seasons.map(s=>s.season)).size+' seasons'+stat+'</div></button>';
+ }).join('')||'<p class="muted">No matching players. Try another name or historical alias.</p>';
+ $('names').querySelectorAll('[data-name]').forEach(b=>b.addEventListener('click',()=>{
+  chosen=b.dataset.name;playerTab='overview';
+  history.replaceState(null,'','?player='+encodeURIComponent(chosen));
+  renderNames();renderPlayer();
+  if(window.innerWidth<760)document.getElementById('view')?.scrollIntoView({behavior:'smooth',block:'start'});
+ }));
 }
 function measure(p,type){const c=p.career?.[type];return c?'<strong>'+Number(c.game_weighted_estimate).toFixed(2)+'</strong><span class="small muted">'+c.games+' games · official method</span>':'<strong>—</strong><span class="small muted">Not available</span>'}
 function seasonGroup(p,season){
