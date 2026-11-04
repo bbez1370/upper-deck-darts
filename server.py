@@ -696,7 +696,7 @@ def assign_candidate_weeks(result, matches):
         # but this is usable only when the anchor falls in the fourth
         # 01 position of a complete block. Never apply this to other
         # players or unconfirmed scores.
-        if norm(person['name'])=='joebanker':
+        if norm(person['name'])=='joebanker' and not complete_block_alignment:
             confirmed=[(i,g) for i,g in enumerate(p01)
                        if abs(float(g['rate'])-12.82)<0.005]
             if len(confirmed)==1:
