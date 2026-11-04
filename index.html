@@ -251,8 +251,8 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       html+=pageTitle("Power Rankings: top five","Weighted 60% last three matches, 30% season game-win rate, 10% opponent strength. Not official standings.");
       html+=table(["Power rank","Team","Score","Recent form"],rs.slice(0,5).map((r,i)=>row([String(i+1),safe(r.name),r.score.toFixed(1),pct(r.recent)])));
       const notable=rs.filter(r=>r.matches>=2&&Math.abs(r.recent-r.overall)>=0.18).sort((a,b)=>Math.abs(b.recent-b.overall)-Math.abs(a.recent-a.overall)).slice(0,4);
-      html+=pageTitle("Form anomalies","Flags large changes in the last three matches relative to a team's season game-win rate.");
-      html+=notable.length?notable.map(r=>`<div class="arecap">${r.recent>r.overall?"📈":"📉"} <b>${safe(r.name)}</b> · last-three form ${pct(r.recent)} versus season ${pct(r.overall)} (${((r.recent-r.overall)*100).toFixed(1)} percentage points).</div>`).join(""):'<p class="muted">No large form changes identified with the available sample.</p>';
+      html+=pageTitle("Teams Trending Up / Down","Highlights teams whose game-win rate over their last three matches differs from their season average by at least 18 percentage points.");
+      html+=notable.length?notable.map(r=>`<div class="arecap">${r.recent>r.overall?"📈":"📉"} <b>${safe(r.name)}</b> · last-three form ${pct(r.recent)} versus season ${pct(r.overall)} (${((r.recent-r.overall)*100).toFixed(1)} percentage points).</div>`).join(""):'<p class="muted">No teams are showing a major upward or downward trend yet.</p>';
       html+=`<div class="anote">Performance ratings are descriptive indices, not an official handicap or standings system. Confirmed substitute exclusions affect player lists, not team results.</div>`;
     } else if(analyticsPage==="teams"){
       const sel=$a("aTeam")?.value||allTeams()[0],hist=matchLog(sel),r=teamRecord(sel),c=gameByType(sel,f=>f==="Cricket"),x=gameByType(sel,f=>f!=="Cricket");
