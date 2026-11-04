@@ -4,6 +4,7 @@
 <style>
 :root{font-family:Inter,system-ui,Arial,sans-serif;color:#e9f6f0;background:#0a1018}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 80% 0%,#173b35,transparent 50%),#0a1018}a{color:#81ecc0}header{border-bottom:1px solid #29453c;padding:24px 0}main,header>div{max-width:1100px;margin:auto;padding:0 20px}h1{font-size:clamp(27px,4vw,43px);margin:12px 0 4px}h2{margin:4px 0 16px}.muted{color:#a9c0b8}.small{font-size:12px}.eyebrow{letter-spacing:.17em;text-transform:uppercase;color:#83dcae;font-weight:750;font-size:11px}.layout{display:grid;grid-template-columns:300px 1fr;gap:18px;margin:22px 0}.panel{background:#14232c;border:1px solid #355348;border-radius:17px;padding:19px;margin-bottom:15px;min-width:0}.list{max-height:570px;overflow:auto}.player{display:block;width:100%;background:#0c1b25;border:1px solid #2c4b44;border-radius:10px;padding:11px;margin:8px 0;text-align:left;color:#def2e8;cursor:pointer}.player:hover,.player.active{border-color:#67e7ae;background:#123c32}.tag{display:inline-block;border:1px solid #3d7560;border-radius:99px;padding:4px 10px;font-size:11px;color:#aff0cd}.cardgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.card{background:#0e322b;border:1px solid #225943;border-radius:12px;padding:13px}.card strong{display:block;color:#9ff8c7;font-size:22px;margin:8px 0}.row{display:flex;align-items:center;gap:17px;flex-wrap:wrap}.avatar{width:104px;height:104px;border:1px solid #436b59;border-radius:19px;object-fit:cover;background:#1b3939}.placeholder{display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;color:#93ecc0}.btn{display:inline-block;cursor:pointer;padding:10px 15px;border-radius:10px;border:1px solid #487464;background:#173b33;color:#d5ffed;text-decoration:none;font:inherit;font-weight:650}.btn.primary{background:#5cdaa0;color:#052719}.btn:disabled{opacity:.5;cursor:wait}.notice{background:#18342e;border:1px solid #366a59;border-radius:10px;padding:12px;line-height:1.5;margin:10px 0}.notice.error{border-color:#ae6170;background:#3d232d}.formfield{display:block;font-size:13px;font-weight:650;margin:13px 0 5px}input,textarea,select{width:100%;border:1px solid #436358;background:#0a1d23;color:white;border-radius:9px;padding:11px;font:inherit}textarea{min-height:100px}.tablebox{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:500px}th,td{text-align:left;border-bottom:1px solid #355046;padding:10px;font-size:13px}th{color:#b2d2c4}hr{border:0;border-top:1px solid #345246;margin:17px 0}img{max-width:100%}@media(max-width:760px){.layout{grid-template-columns:1fr}.list{max-height:210px}.cardgrid{grid-template-columns:repeat(2,1fr)}}
 .weekly-chart{display:grid;grid-template-columns:40px minmax(0,1fr);gap:8px;margin:14px 0}.weekly-line{display:flex;align-items:center;gap:8px;min-height:36px}.weekly-line .weekly-label{font-size:12px;color:#bcd7cc;white-space:nowrap;width:32px}.weekly-track{flex:1;height:17px;background:#0c1b25;border-radius:7px;overflow:hidden;border:1px solid #284739}.weekly-fill{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#1d8f78,#80ebae)}.weekly-fill.mpr{background:linear-gradient(90deg,#3c87aa,#9cd9ef)}.weekly-value{width:70px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}.weekgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.weekmetric{background:#0d3029;border:1px solid #345e4c;border-radius:9px;padding:11px}.weekmetric strong{display:block;font-size:19px;color:#a4f6c9}.week-legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:#c5dace}.week-legend b{color:#b3ffd7}.weekly-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0}.weekly-tabs button{background:#162c32;border:1px solid #385e50;color:#c6e9db;border-radius:9px;padding:9px 12px}.weekly-tabs button.active{background:#67dba4;color:#05281a}.season-warning{background:#332c21;border-left:3px solid #ddb868;padding:11px;font-size:12px;color:#ffe8b6}@media(max-width:600px){.weekgrid{grid-template-columns:1fr 1fr}.weekly-value{width:57px}}
+.profile-hero{display:flex;align-items:center;gap:18px;padding-bottom:16px;border-bottom:1px solid #315147;margin-bottom:14px}.profile-hero h2{font-size:clamp(24px,3vw,34px);margin:2px 0 5px}.profile-tabs{display:flex;gap:6px;overflow:auto;scrollbar-width:thin;border-bottom:1px solid #35594c;padding-bottom:9px;margin:6px 0 22px}.profile-tabs button{border:1px solid #345d51;background:#0f2830;color:#c3ded4;border-radius:10px;padding:12px 14px;min-width:max-content;font-size:13px;font-weight:700}.profile-tabs button.active{background:#62dca3;border-color:#62dca3;color:#062b1e}.profile-tabs button:focus-visible,.player:focus-visible{outline:3px solid #ace8cd;outline-offset:2px}.profile-eyebrow{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.13em;color:#8be3af}.profile-section-title{margin:9px 0 4px;font-size:23px}.profile-subtitle{font-size:13px;color:#b4ccc2;line-height:1.6;margin:5px 0 18px}.profile-stack{display:grid;gap:12px}.overview-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.overview-tile{background:#0e3029;border:1px solid #315f4c;border-radius:13px;padding:17px}.overview-tile strong{display:block;font-size:27px;color:#aff7d0}.overview-tile span{display:block;color:#b8cfc4;font-size:12px}.sectionlink{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;border:1px solid #355d4e;border-radius:12px;padding:15px;background:#102a30;color:#e4f6ed;font:inherit;cursor:pointer}.sectionlink:hover{background:#183d35}.stat-table{width:100%;min-width:470px}.empty-profile{padding:23px;background:#0e222c;border-radius:12px;color:#bed4cb}.subtle-label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#9bcbb4}.season-chip{display:inline-block;padding:6px 10px;border-radius:99px;background:#153b32;color:#c8ffe2;font-size:12px;margin:6px 0}@media(max-width:760px){.profile-hero{align-items:flex-start}.profile-hero .avatar{width:78px;height:78px;flex:none}.overview-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.profile-tabs{margin-left:-5px;margin-right:-5px}.profile-tabs button{padding:11px 10px}.sectionlink{padding:13px}}@media(max-width:420px){.overview-tiles{grid-template-columns:1fr 1fr}.overview-tile{padding:12px}.overview-tile strong{font-size:22px}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script></head>
 <body><header><div><a href="/">← Back to Upper Deck</a><p class="eyebrow">2021 to present · League history</p><h1>Official Player Records</h1><p class="muted">Upper Deck's official player history from the inaugural 2021–22 season through today.</p></div></header>
@@ -28,6 +29,7 @@ const equal=(a,b)=>String(a||'').trim().toLocaleLowerCase()===String(b||'').trim
 const client=window.supabase?.createClient(BASE,KEY);
 let career=null,rawPlayers=[],cleanup=[],resolutions=[],profiles=[],claims=[],user=null,officer=false,chosen='',myProfile=null;
 let weeklyData=null,weeklyError='',weeklyLoading=false;
+let playerTab='overview';
 function prepareCleanedPlayers(){
  const raw=rawPlayers.map(p=>({...p,seasons:(p.seasons||[]).map(x=>({...x}))}));
  const rules=new Map(cleanup.map(x=>[String(x.source_name).trim().toLowerCase(),x]));
@@ -133,26 +135,102 @@ function renderNames(){
  $('names').querySelectorAll('[data-name]').forEach(b=>b.addEventListener('click',()=>{chosen=b.dataset.name;history.replaceState(null,'','?player='+encodeURIComponent(chosen));renderNames();renderPlayer()}));
 }
 function measure(p,type){const c=p.career?.[type];return c?'<strong>'+Number(c.game_weighted_estimate).toFixed(2)+'</strong><span class="small muted">'+c.games+' games · official method</span>':'<strong>—</strong><span class="small muted">Not available</span>'}
-function renderPlayer(){
- const p=playerFor(chosen);
- if(!p){$('view').innerHTML='<h2>Player history</h2><p class="muted">No verified player rows available yet. See historical coverage below.</p>';return}
- const pub=profileFor(p.name),seasons=[...p.seasons].sort((a,b)=>a.season.localeCompare(b.season)||a.metric.localeCompare(b.metric));
- const linked=claims.some(c=>c.user_id===user?.id&&c.status==='approved'&&equal(c.player_name,p.name));
- $('view').innerHTML='<div class="row">'+avatar(pub,p.name)+'<div><h2>'+safe(pub?.display_name||p.name)+'</h2><p class="muted">'+safe(pub?.nickname||'Upper Deck darts player')+'</p><span class="tag">'+new Set(seasons.map(s=>s.season)).size+' recorded seasons</span></div></div>'+
- (pub?.bio?'<p>'+safe(pub.bio)+'</p>':'')+
- (p.aliases?.length?'<p class="small muted">Combined historical names: '+p.aliases.map(safe).join(', ')+'</p>':'')+
- (p.conflicts?.length?'<p class="notice error">Overlapping records need review: '+p.conflicts.map(safe).join('; ')+'. Conflicting season averages are excluded from career estimates.</p>':'')+
- (p.combinedGroups?.length?'<p class="notice">'+p.combinedGroups.length+' same-season performance group(s) combined from verified aliases. Game-weighted estimates include all their recorded games.</p>':'')+
- ((pub?.favorite_double||pub?.darts_setup)?'<p class="muted small">'+(pub?.favorite_double?'Favorite double: '+safe(pub.favorite_double)+' · ':'')+(pub?.darts_setup?'Darts: '+safe(pub.darts_setup):'')+'</p>':'')+
- '<h3>Career snapshot</h3><div class="cardgrid"><div class="card"><span class="small">Career 01 PPD</span>'+measure(p,'PPD')+'</div><div class="card"><span class="small">Career Cricket MPR</span>'+measure(p,'MPR')+'</div><div class="card"><span class="small">Recorded 01 games</span><strong>'+(p.career?.PPD?.games||'—')+'</strong></div><div class="card"><span class="small">Recorded Cricket games</span><strong>'+(p.career?.MPR?.games||'—')+'</strong></div></div>'+
- '<p class="small muted">Official Upper Deck career averages use game-count weighting of published season PPD/MPR. Exact dart-weighted or mark-weighted values are not available from these summary reports.</p>'+
- '<h3>Season-by-season history</h3><div class="tablebox"><table><thead><tr><th>Season</th><th>Game</th><th>Average</th><th>Games</th><th>Team</th></tr></thead><tbody>'+
- seasons.map(x=>'<tr><td>'+safe(x.season)+'</td><td>'+safe(x.metric)+'</td><td>'+Number(x.average).toFixed(2)+'</td><td>'+x.games+'</td><td>'+safe(x.team)+'</td></tr>').join('')+'</tbody></table></div>'+
- (linked?'<p class="tag">This is your approved player profile</p>':'')+
- '<div id="weeklyPlayerTrends" class="panel" style="margin-top:20px" aria-live="polite"></div>';
- renderWeeklyTrends();
+function seasonGroup(p,season){
+ const rows=p.seasons.filter(r=>r.season===season);
+ const out={season,rows};
+ for(const metric of ['PPD','MPR']){
+  const items=rows.filter(r=>r.metric===metric);
+  const games=items.reduce((a,r)=>a+Number(r.games||0),0);
+  out[metric]=games?{games,average:items.reduce((a,r)=>a+Number(r.average)*Number(r.games||0),0)/games}:null;
+ }
+ return out;
 }
-
+function metricTile(title,stat,description){
+ return '<div class="overview-tile"><span>'+safe(title)+'</span><strong>'+(stat==null?'—':safe(stat))+'</strong><span>'+safe(description)+'</span></div>';
+}
+function renderPlayer(){
+ const root=$('view'),p=playerFor(chosen);
+ if(!p){root.innerHTML='<h2>Choose a player</h2><p class="muted">Search the directory to explore official player statistics and profiles.</p>';return}
+ const pub=profileFor(p.name),seasons=[...new Set(p.seasons.map(r=>r.season))].sort();
+ const current=seasonGroup(p,'2026–27');
+ const linked=claims.some(c=>c.user_id===user?.id&&c.status==='approved'&&equal(c.player_name,p.name));
+ const tabs=[['overview','Overview'],['current','2026–27 Stats'],['history','Career History'],['trends','Weekly Trends'],['bio','Bio & Gear']];
+ const tabButtons='<div class="profile-tabs" role="tablist" aria-label="Player profile sections">'+
+  tabs.map(([id,label])=>'<button type="button" role="tab" aria-selected="'+(playerTab===id)+'" data-player-tab="'+id+'" class="'+(playerTab===id?'active':'')+'">'+label+'</button>').join('')+'</div>';
+ const currentMetric=(metric)=>current[metric]?Number(current[metric].average).toFixed(2):'—';
+ const currentLabel=()=>'<p class="profile-subtitle">Current league season · 2026–27 · Official LeagueLeader season summaries</p>';
+ const helper=(name,detail)=>'<button class="sectionlink" type="button" data-go-tab="'+name+'"><span>'+detail+'</span><span aria-hidden="true">›</span></button>';
+ const errors=p.conflicts?.length?'<p class="notice error">Some duplicate source records still require a review. Affected stats are excluded.</p>':'';
+ const bioContent=pub?.bio?'<p>'+safe(pub.bio)+'</p>':'<p class="empty-profile">This player has not added a public bio yet. Registered members can claim their profile and personalize it.</p>';
+ const historical=seasons.filter(x=>x!=='2026–27');
+ let content='';
+ if(playerTab==='overview'){
+  content='<p class="profile-eyebrow">Player overview</p><h3 class="profile-section-title">At a glance</h3>'+
+   '<p class="profile-subtitle">Current performance and lifetime history in one place.</p>'+
+   '<div class="overview-tiles">'+
+   metricTile('2026–27 01 PPD',currentMetric('PPD'),(current.PPD?.games||0)+' recorded games')+
+   metricTile('2026–27 Cricket MPR',currentMetric('MPR'),(current.MPR?.games||0)+' recorded games')+
+   metricTile('Official career PPD',p.career?.PPD?.game_weighted_estimate==null?null:Number(p.career.PPD.game_weighted_estimate).toFixed(2),(p.career?.PPD?.games||0)+' career games')+
+   metricTile('Official career MPR',p.career?.MPR?.game_weighted_estimate==null?null:Number(p.career.MPR.game_weighted_estimate).toFixed(2),(p.career?.MPR?.games||0)+' career games')+
+   '</div>'+errors+'<div class="profile-stack" style="margin-top:17px">'+
+   helper('current','🎯 Current season statistics')+
+   helper('history','🏆 Full career and historical seasons')+
+   helper('trends','📈 Weekly performance trends')+
+   helper('bio','👤 Player bio, nickname and darts')+'</div>';
+ }else if(playerTab==='current'){
+  content='<p class="profile-eyebrow">Active season</p><h3 class="profile-section-title">2026–27 Season Stats</h3>'+currentLabel()+
+   '<div class="overview-tiles">'+
+   metricTile('01 PPD',currentMetric('PPD'),'Season average')+
+   metricTile('Cricket MPR',currentMetric('MPR'),'Season average')+
+   metricTile('01 games',current.PPD?.games||0,'Recorded in LeagueLeader')+
+   metricTile('Cricket games',current.MPR?.games||0,'Recorded in LeagueLeader')+'</div>'+
+   (current.rows.length?'<h3>Current-season report entries</h3><div class="tablebox"><table class="stat-table"><thead><tr><th>Game</th><th>Team</th><th>Average</th><th>Games</th></tr></thead><tbody>'+
+    current.rows.map(r=>'<tr><td>'+safe(r.metric)+'</td><td>'+safe(r.team)+'</td><td>'+Number(r.average).toFixed(2)+'</td><td>'+r.games+'</td></tr>').join('')+'</tbody></table></div>':
+    '<p class="empty-profile">No current-season statistics are available for this player yet.</p>')+
+    '<p class="profile-subtitle">The 2026–27 figures reflect the current LeagueLeader season report. They are not historical career averages.</p>'+helper('trends','📈 Explore individual weekly trends');
+ }else if(playerTab==='history'){
+  content='<p class="profile-eyebrow">Historical records</p><h3 class="profile-section-title">Career History</h3>'+
+   '<p class="profile-subtitle">Official league record from the inaugural 2021–22 season. Multiple approved names can contribute to the same career.</p>'+
+   '<div class="overview-tiles">'+
+   metricTile('Career PPD',p.career?.PPD?.game_weighted_estimate==null?null:Number(p.career.PPD.game_weighted_estimate).toFixed(2),(p.career?.PPD?.games||0)+' recorded games')+
+   metricTile('Career MPR',p.career?.MPR?.game_weighted_estimate==null?null:Number(p.career.MPR.game_weighted_estimate).toFixed(2),(p.career?.MPR?.games||0)+' recorded games')+
+   metricTile('Seasons played',seasons.length,'Including current if applicable')+
+   metricTile('Historical seasons',historical.length,'2021–22 through 2025–26')+'</div>'+
+   '<h3>Season-by-season averages</h3>'+
+   (seasons.length?'<div class="tablebox"><table class="stat-table"><thead><tr><th>Season</th><th>01 PPD</th><th>01 games</th><th>Cricket MPR</th><th>Cricket games</th></tr></thead><tbody>'+
+    seasons.map(year=>{const r=seasonGroup(p,year);return '<tr><td>'+safe(year)+'</td><td>'+(r.PPD?r.PPD.average.toFixed(2):'—')+'</td><td>'+(r.PPD?r.PPD.games:'—')+'</td><td>'+(r.MPR?r.MPR.average.toFixed(2):'—')+'</td><td>'+(r.MPR?r.MPR.games:'—')+'</td></tr>'}).join('')+
+    '</tbody></table></div>':'<p class="empty-profile">No historical records found.</p>')+
+   (p.aliases?.length?'<p class="small muted">Official combined player names: '+p.aliases.map(safe).join(', ')+'</p>':'')+
+   (p.combinedGroups?.length?'<p class="small muted">'+p.combinedGroups.length+' approved same-season performance group(s) combined in the career calculation.</p>':'')+
+   errors+
+   '<details style="margin-top:15px"><summary class="btn">View original team and report entries</summary>'+
+   '<div class="tablebox"><table class="stat-table"><thead><tr><th>Season</th><th>Metric</th><th>Team</th><th>Avg.</th><th>Games</th></tr></thead><tbody>'+
+   [...p.seasons].sort((a,b)=>a.season.localeCompare(b.season)).map(r=>'<tr><td>'+safe(r.season)+'</td><td>'+safe(r.metric)+'</td><td>'+safe(r.team)+'</td><td>'+Number(r.average).toFixed(2)+'</td><td>'+r.games+'</td></tr>').join('')+'</tbody></table></div></details>'+
+   '<p class="profile-subtitle">Official career averages are weighted by the games reported for each season. Exact dart-weighted PPD and mark-weighted MPR are not available from those summary reports.</p>';
+ }else if(playerTab==='trends'){
+   content='<p class="profile-eyebrow">Current season</p><h3 class="profile-section-title">Week-by-Week Trends</h3>'+
+    '<p class="profile-subtitle">See game-level scoring changes during the 2026–27 season. Historical reports provide season totals, not reliably dated weekly games.</p>'+
+    '<div id="weeklyPlayerTrends" aria-live="polite"></div>';
+ }else{
+  content='<p class="profile-eyebrow">Meet the player</p><h3 class="profile-section-title">Bio & Darts</h3>'+
+   bioContent+
+   '<div class="profile-stack">'+
+   '<div class="overview-tile"><span>Nickname</span><strong style="font-size:19px">'+safe(pub?.nickname||'Not added yet')+'</strong></div>'+
+   '<div class="overview-tile"><span>Favorite double</span><strong style="font-size:19px">'+safe(pub?.favorite_double||'Not added yet')+'</strong></div>'+
+   '<div class="overview-tile"><span>Darts setup</span><strong style="font-size:19px">'+safe(pub?.darts_setup||'Not added yet')+'</strong></div></div>'+
+   (linked?'<p class="notice">This is your claimed player profile. Edit your bio and gear details under <b>Your profile</b>.</p>':
+    '<p class="profile-subtitle">To update this bio, the player must sign in, save their details and have their player identity claim approved.</p>');
+ }
+ root.innerHTML='<div class="profile-hero">'+avatar(pub,p.name)+
+  '<div><p class="profile-eyebrow">Official Upper Deck player</p><h2>'+safe(pub?.display_name||p.name)+'</h2>'+
+  '<p class="muted">'+safe(pub?.nickname||'League member')+'</p><span class="season-chip">'+seasons.length+' season'+(seasons.length===1?'':'s')+' on record</span></div></div>'+
+  tabButtons+'<div id="profileTabBody" role="tabpanel">'+content+'</div>';
+ root.querySelectorAll('[data-player-tab],[data-go-tab]').forEach(button=>button.addEventListener('click',()=>{
+  playerTab=button.dataset.playerTab||button.dataset.goTab;
+  renderPlayer();
+ }));
+ if(playerTab==='trends')renderWeeklyTrends();
+}
 async function loadWeeklyData(){
  if(weeklyLoading||weeklyData)return;
  weeklyLoading=true;
