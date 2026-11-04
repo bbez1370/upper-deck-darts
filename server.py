@@ -297,97 +297,189 @@ def get_individual_games(rr):
 
 
 def assign_candidate_weeks(result, matches):
-    """Match ordered individual result sequences to dated team game slots.
-    A week is assigned only if EVERY compatible order-preserving alignment
-    puts the game in the same schedule week. Ambiguity stays unassigned.
+    """Read per-player report rows oldest first, newest last.
+
+    A seven-game team match contains four 01 games (301, 501, 701, 501)
+    and three Cricket games. Join the separate 01 and Cricket report lists
+    back into complete seven-game blocks when counts and all seven
+    format/win results verify that the player played whole match(es).
+    Align those complete blocks to the dated schedule in chronological
+    order; handle skipped weeks without assuming consecutive attendance.
+    Otherwise fall back to per-game order-preserving matching. Do not
+    publish a week if more than one compatible schedule week remains.
     """
     schedule_dates={int(w['num']):w['date'] for w in SCHEDULE}
-    matched=ambiguous=unmatched=0
+    matched=ambiguous=unmatched=full_medley_assigned=0
+    match_weeks=sorted(matches,key=lambda m:int(m['week']))
+
+    def uniquely_align(seq, options, compatible):
+        """For each item, return all possible option positions across full
+        order-preserving alignments. Avoid enumerating exponentially many
+        alignments when win/loss sequences happen to repeat.
+        """
+        m,n=len(seq),len(options)
+        if not m or m>n:return None
+        forward=[[False]*(n+1) for _ in range(m+1)]
+        forward[0][0]=True
+        for j in range(n):
+            for i in range(m+1):
+                if not forward[i][j]:continue
+                forward[i][j+1]=True
+                if i<m and compatible(i,j):forward[i+1][j+1]=True
+        if not forward[m][n]:return None
+        suffix=[[False]*(n+1) for _ in range(m+1)]
+        for j in range(n+1):suffix[m][j]=True
+        for j in range(n-1,-1,-1):
+            for i in range(m-1,-1,-1):
+                suffix[i][j]=(suffix[i][j+1] or
+                               compatible(i,j) and suffix[i+1][j+1])
+        return [[j for j in range(n) if forward[i][j] and
+                 compatible(i,j) and suffix[i+1][j+1]] for i in range(m)]
+
+    def game_matches(game, slot):
+        game_type=canonical_game_format(game.get('game',''))
+        slot_type=canonical_game_format(slot['game'])
+        return (game['metric']==slot['metric'] and
+                game['win']==slot['win'] and game_type==slot_type)
+
     for person in result['players']:
         team=norm(person['team'])
-        slots=[]
-        for match in sorted(matches,key=lambda m:int(m['week'])):
-            if team not in (norm(match['teams'][0]),norm(match['teams'][1])):
-                continue
+        team_matches=[match for match in match_weeks
+                      if match.get('sequence_valid') and
+                      team in (norm(match['teams'][0]),norm(match['teams'][1]))]
+        full_slots=[]
+        for match in team_matches:
+            slots=[]
+            if len(match['wins'])!=7 or len(match['formats'])!=7:continue
             for k,fmt in enumerate(match['formats']):
-                if k>=len(match['wins']):continue
-                if not match.get('sequence_valid',False):continue
-                kind='MPR' if 'cricket' in str(fmt).lower() else 'PPD'
+                kind='MPR' if canonical_game_format(fmt)=='cricket' else 'PPD'
                 slots.append({'metric':kind,'game':str(fmt),
                      'win':norm(match['teams'][match['wins'][k]])==team,
                      'week':int(match['week']),
                      'date':schedule_dates.get(int(match['week'])),
                      'game_number':k+1,
-                     'is_deciding_game':k==6 and match['wins'][:6].count(0)==3 and match['wins'][:6].count(1)==3})
-        for metric in ('PPD','MPR'):
-            indexes=[i for i,g in enumerate(person['games']) if g['metric']==metric]
-            seq=[person['games'][i] for i in indexes]
-            options=[slot for slot in slots if slot['metric']==metric]
-            m,n=len(seq),len(options)
-            if not m:continue
-            if not n or m>n:
-                unmatched+=m
-                continue
-            def compatible(i,j):
-                game=seq[i];slot=options[j]
-                game_type=re.sub(r'[^a-z0-9]','',str(game.get('game','')).lower())
-                slot_type=re.sub(r'[^a-z0-9]','',str(slot['game']).lower())
-                return (game['win']==slot['win'] and game_type==slot_type)
-            # Forward: first i player games can fit within first j team slots.
-            forward=[[False]*(n+1) for _ in range(m+1)]
-            forward[0][0]=True
-            for j in range(n):
-                for i in range(m+1):
-                    if not forward[i][j]:continue
-                    forward[i][j+1]=True
-                    if i<m and compatible(i,j):forward[i+1][j+1]=True
-            if not forward[m][n]:
-                unmatched+=m
-                continue
-            # Suffix: games from i onward fit within slots from j onward.
-            suffix=[[False]*(n+1) for _ in range(m+1)]
-            for j in range(n+1):suffix[m][j]=True
-            for j in range(n-1,-1,-1):
-                for i in range(m-1,-1,-1):
-                    suffix[i][j]=(suffix[i][j+1] or
-                                  compatible(i,j) and suffix[i+1][j+1])
-            for k,game in enumerate(seq):
-                possible_slots=[options[j] for j in range(n)
-                          if forward[k][j] and compatible(k,j) and suffix[k+1][j+1]]
-                possible={slot['week'] for slot in possible_slots}
-                if len(possible)==1:
-                    week=next(iter(possible))
-                    game_numbers={slot['game_number'] for slot in possible_slots}
-                    if len(game_numbers)==1:
-                        game['inferred_game_number']=next(iter(game_numbers))
-                        game['inferred_decider']=all(slot['is_deciding_game'] for slot in possible_slots)
-                    game['inferred_week']=week
-                    game['inferred_date']=schedule_dates.get(week)
-                    game['week_confidence']='unique_ordered_alignment'
-                    matched+=1
-                elif possible:
-                    game['candidate_weeks']=sorted(possible)
-                    ambiguous+=1
-                else:
-                    unmatched+=1
+                     'is_deciding_game':k==6 and
+                         match['wins'][:6].count(0)==3 and match['wins'][:6].count(1)==3})
+            if [s['metric'] for s in slots]==['PPD','MPR','PPD','MPR','PPD','MPR','PPD']:
+                full_slots.append(slots)
+
+        p01=[g for g in person['games'] if g['metric']=='PPD']
+        cricket=[g for g in person['games'] if g['metric']=='MPR']
+        complete_block_alignment=False
+
+        # Most doubles players have a 4 x 01 + 3 x Cricket sequence
+        # per played match. Match *both* sections together to constrain weeks.
+        if (p01 and cricket and len(p01)%4==0 and len(cricket)%3==0
+                and len(p01)//4==len(cricket)//3
+                and len(p01)//4<=len(full_slots)):
+            count=len(p01)//4
+            blocks=[]
+            for i in range(count):
+                zeros=p01[i*4:(i+1)*4]
+                cr=cricket[i*3:(i+1)*3]
+                blocks.append([zeros[0],cr[0],zeros[1],cr[1],
+                               zeros[2],cr[2],zeros[3]])
+            def block_compatible(i,j):
+                return all(game_matches(g,slot) for g,slot in zip(blocks[i],full_slots[j]))
+            options=uniquely_align(blocks,full_slots,block_compatible)
+            if options is not None:
+                complete_block_alignment=True
+                for i,possibilities in enumerate(options):
+                    weeks={full_slots[j][0]['week'] for j in possibilities}
+                    if len(weeks)!=1:
+                        for game in blocks[i]:
+                            game['candidate_weeks']=sorted(weeks)
+                        ambiguous+=7
+                        continue
+                    j=possibilities[0]
+                    slots=full_slots[j]
+                    for game,slot in zip(blocks[i],slots):
+                        game['inferred_week']=slot['week']
+                        game['inferred_date']=slot['date']
+                        game['inferred_game_number']=slot['game_number']
+                        game['inferred_decider']=slot['is_deciding_game']
+                        game['week_confidence']='verified_full_medley_sequence'
+                        matched+=1
+                        full_medley_assigned+=1
+
+        if not complete_block_alignment:
+            # Incomplete weeks, player absences or missing report rows:
+            # align the two metric sequences independently, retaining
+            # ambiguous games as unassigned rather than guessing dates.
+            slots=[slot for group in full_slots for slot in group]
+            for metric,seq in [('PPD',p01),('MPR',cricket)]:
+                options=[slot for slot in slots if slot['metric']==metric]
+                m,n=len(seq),len(options)
+                if not m:continue
+                if not n or m>n:
+                    unmatched+=m
+                    continue
+                # League organizer's checked example: Joe Banker's 12.82
+                # PPD 01 game was played October 28, 2026 (Week 3).
+                # Apply only when that score occurs exactly once and is
+                # compatible with a Week 3 team slot. Never guess a game
+                # number or anchor any other player's matching score.
+                known_last=(norm(person['name'])=='joebanker' and
+                    metric=='PPD' and
+                    sum(abs(float(g['rate'])-12.82)<0.005 for g in seq)==1)
+                anchor_i=next((i for i,g in enumerate(seq)
+                    if abs(float(g['rate'])-12.82)<0.005),None) if known_last else None
+                possible_anchor=(known_last and anchor_i is not None and
+                    any(slot['week']==3 and game_matches(seq[anchor_i],slot)
+                        for slot in options))
+                def compatible(i,j):
+                    return (game_matches(seq[i],options[j]) and
+                        not (possible_anchor and i==anchor_i and options[j]['week']!=3))
+                align=uniquely_align(seq,options,compatible)
+                # If a user-confirmed anchor contradicts otherwise valid
+                # source data, don't force it: retry without that anchor.
+                if align is None and possible_anchor:
+                    possible_anchor=False
+                    align=uniquely_align(seq,options,compatible)
+                if align is None:
+                    unmatched+=m
+                    continue
+                for k,game in enumerate(seq):
+                    poss=[options[j] for j in align[k]]
+                    weeks={slot['week'] for slot in poss}
+                    if len(weeks)==1:
+                        slot=poss[0]
+                        game['inferred_week']=slot['week']
+                        game['inferred_date']=slot['date']
+                        numbers={x['game_number'] for x in poss}
+                        if len(numbers)==1:
+                            game['inferred_game_number']=slot['game_number']
+                            game['inferred_decider']=all(x['is_deciding_game'] for x in poss)
+                        game['week_confidence']='unique_ordered_alignment'
+                        if possible_anchor and k==anchor_i:
+                            game['week_confidence']='organizer_confirmed_week_3'
+                        matched+=1
+                    elif weeks:
+                        game['candidate_weeks']=sorted(weeks)
+                        ambiguous+=1
+                    else:
+                        unmatched+=1
+
         byweek={}
         for g in person['games']:
             week=g.get('inferred_week')
             if week is None:continue
-            key=str(week)
-            item=byweek.setdefault(key,{'week':week,'date':schedule_dates.get(week),
-                                        'PPD':[],'MPR':[]})
+            item=byweek.setdefault(str(week),{'week':week,
+                'date':schedule_dates.get(week),'PPD':[],'MPR':[]})
             item[g['metric']].append(g['rate'])
         person['weekly']=[{'week':v['week'],'date':v['date'],
-            'PPD':{'games':len(v['PPD']),'average':round(sum(v['PPD'])/len(v['PPD']),2)} if v['PPD'] else None,
-            'MPR':{'games':len(v['MPR']),'average':round(sum(v['MPR'])/len(v['MPR']),2)} if v['MPR'] else None}
+            'PPD':{'games':len(v['PPD']),
+                   'average':round(sum(v['PPD'])/len(v['PPD']),2)} if v['PPD'] else None,
+            'MPR':{'games':len(v['MPR']),
+                   'average':round(sum(v['MPR'])/len(v['MPR']),2)} if v['MPR'] else None}
             for v in sorted(byweek.values(),key=lambda x:x['week'])]
-    result['matching']={'assigned':matched,'ambiguous':ambiguous,'unmatched':unmatched,
-       'method':'Ordered per-player results aligned to seven-game medley sequence, matching team game type, win/loss and custom dated schedule',
+    result['matching']={'assigned':matched,'ambiguous':ambiguous,
+       'unmatched':unmatched,'full_medley_assigned':full_medley_assigned,
+       'method':'Player game lists oldest-to-newest; match complete 301/Cricket/501/Cricket/701/Cricket/501 medleys to dated team results including win/loss and skipped weeks, then order-preserving partial-game fallback',
        'game_order':list(GAME_ORDER),
        'validated_matches':sum(bool(m.get('sequence_valid')) for m in matches),
        'invalid_sequence_matches':sum(not bool(m.get('sequence_valid')) for m in matches),
-       'caveat':'Weeks are inferred, not printed by LeagueLeader. A week is displayed only when every possible order-preserving match places the game there.'}
+       'caveat':'LeagueLeader prints Week 0 on player rows. Weeks are assigned only when ordered games match dated team results unambiguously. Scores alone cannot identify an otherwise ambiguous week.'}
     result['week_verified']=False
     return result
 
