@@ -356,6 +356,14 @@ function renderWeeklyTrends(){
     (d.week_3_block_status?'<p>Week 3 block: '+safe(d.week_3_block_status)+'</p>':'')+
     (d.week_3_block_companions_assigned!=null?'<p>Week 3 companion games added: '+Number(d.week_3_block_companions_assigned)+'</p>':'')+
     (d.chronology_assigned!=null?'<p>Complete-attendance chronology mapped: '+Number(d.chronology_assigned)+'</p>':'')+
+    '<p>Pre-import report: '+Number(x.normalization?.source_01_rows||0)+' 01 rows, '+
+      Number(x.normalization?.source_cricket_rows||0)+' Cricket rows. Potential complete seven-game blocks: '+
+      Number(x.normalization?.possible_complete_blocks||0)+'. Unpaired 01: '+
+      Number(x.normalization?.unpaired_01_rows||0)+', unpaired Cricket: '+
+      Number(x.normalization?.unpaired_cricket_rows||0)+'.</p>'+
+    (d.normalized_preassignments!=null?'<p>Games dated before schedule matching: '+Number(d.normalized_preassignments)+'</p>':'')+
+    (d.week_3_preprocessed_games?'<p>Week 3 source rows recovered before import: '+Number(d.week_3_preprocessed_games)+'</p>':'')+
+    (weeklyData.team_match_source_status==='unavailable'?'<p class="season-warning">Team-match import unavailable; using only supported normalized source chronology.</p>':'')+
     '<p>Matching method: '+safe(d.method||'Not available')+'</p></div>';
   }).join('')+'</details>'+
   '<div class="weekgrid">'+
@@ -366,7 +374,7 @@ function renderWeeklyTrends(){
   '<div class="weekly-tabs" role="group" aria-label="Weekly scoring metric">'+
   '<button id="weekPPD" class="active" type="button">01 PPD</button><button id="weekMPR" type="button">Cricket MPR</button></div>'+
   '<div id="weekChart">'+chart('PPD')+'</div>'+
-  '<p class="small muted">Values are arithmetic averages of the reported single-game rates for that week, not true dart/mark-weighted averages. Numbers in parentheses indicate included games. Unassigned games are excluded rather than placed in a guessed week.</p>'+
+  '<p class="small muted">The source report is normalized into seven-game blocks before importing. Weekly scoring values are averages of reported single-game rates. Numbers in parentheses show games included; unmatched rows remain visible in diagnostics rather than receiving guessed dates.</p>'+
   (r.unassigned?'<p class="season-warning">'+r.unassigned+' game(s) could not be uniquely assigned to a week, so the trend is incomplete. Their season totals remain in the official career summary.</p>':'')+
   '<div class="tablebox"><table><thead><tr><th>Week</th><th>Schedule date</th><th>01 PPD</th><th>Cricket MPR</th><th>Games won</th></tr></thead><tbody>'+
   weeks.map(w=>'<tr><td>'+w.week+'</td><td>'+safe(w.date||'—')+'</td><td>'+(
