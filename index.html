@@ -214,6 +214,33 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
   const pct=n=>(100*n).toFixed(1)+"%";
   const rate=t=>{const r=teamRecord(t);return r?r.wins/Math.max(1,r.games):0.5};
   const form=t=>{const list=matchLog(t).slice(-3);if(!list.length)return rate(t);return list.reduce((a,x)=>a+x.for/7,0)/list.length};
+  // Compare a match only against games completed in earlier weeks.
+  // Matches in the same week have no reliable intra-week ordering.
+  const preMatchRate=(team,week)=>{
+    const past=matchData().filter(m=>m.week<week&&m.teams.some(n=>norm(n)===norm(team)));
+    if(!past.length)return null;
+    const wins=past.reduce((total,m)=>total+won(m,team),0);
+    return wins/(7*past.length);
+  };
+  const upsetFor=m=>{
+    const rates=m.teams.map(t=>preMatchRate(t,m.week));
+    if(rates.some(r=>r===null))return null;
+    const winner=won(m,m.teams[0])>3?0:1;
+    const spread=rates[1-winner]-rates[winner];
+    return spread>0?{m,winner,spread,rates}:null;
+  };
+  const recapFor=week=>{
+    const games=matchData().filter(m=>m.week===week);
+    if(!games.length)return null;
+    const sweeps=games.filter(m=>m.wins.every(i=>i===m.wins[0]));
+    const upsets=games.map(upsetFor).filter(Boolean).sort((a,b)=>b.spread-a.spread);
+    const close=games.filter(m=>[3,4].includes(won(m,m.teams[0])));
+    const lines=['Week '+week+' recap · '+games.length+' completed matchups ('+(games.length*7)+' games).'];
+    if(sweeps.length)lines.push('7–0 sweeps: '+sweeps.map(m=>m.teams[m.wins[0]]+' over '+m.teams[1-m.wins[0]]).join('; ')+'.');
+    if(upsets.length)lines.push('Upsets based on pre-match game-win rates: '+upsets.map(x=>x.m.teams[x.winner]+' over '+x.m.teams[1-x.winner]).join('; ')+'.');
+    if(close.length)lines.push('4–3 nail-biters: '+close.map(m=>{const a=m.teams[0],b=m.teams[1];return (won(m,a)>3?a:b)+' over '+(won(m,a)>3?b:a)}).join('; ')+'.');
+    return {subject:'Weekly League Highlights · Week '+week,body:lines.join('\n\n')};
+  };
   const gameByType=(t,needle)=>{let a=0,b=0;for(const x of matchLog(t)){x.m.formats.forEach((f,i)=>{if(needle(f)){b++;if(norm(x.m.teams[x.m.wins[i]])===norm(t))a++;}})}return {wins:a,games:b,rate:b?a/b:0};};
   function ranks(){
     return analyticsTeams().map(t=>{
@@ -233,10 +260,33 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
   const row=cells=>`<tr>${cells.map(c=>`<td>${c}</td>`).join("")}</tr>`;
   const pageTitle=(title,subtitle)=>`<h3>${title}</h3><p class="muted mini">${subtitle}</p>`;
   function teamSelector(id,defaultName){const node=$a(id);if(node&&defaultName&&allTeams().some(t=>norm(t)===norm(defaultName)))node.value=defaultName;}
+  async function publishWeeklyRecap(week){
+    if(!bc||!bu||!bmod)return;
+    const recap=recapFor(week);
+    if(!recap)return;
+    const btn=$a('publishWeeklyHighlights'),status=$a('weeklyRecapStatus');
+    if(btn)btn.disabled=true;
+    if(status)status.textContent='Publishing recap…';
+    try{
+      const {data:existing,error:lookupError}=await bc.from('league_posts').select('id').eq('category','announcement').eq('subject',recap.subject).limit(1);
+      if(lookupError)throw lookupError;
+      const write=existing?.length?
+        bc.from('league_posts').update({body:recap.body,pinned:true}).eq('id',existing[0].id):
+        bc.from('league_posts').insert({author_id:bu.id,display_name:'Upper Deck League',category:'announcement',pinned:true,...recap});
+      const {error}=await write;if(error)throw error;
+      if(status)status.textContent='Pinned on the Community bulletin board.';
+      if(btn)btn.textContent='✓ Recap published & pinned';
+      await bload();
+    }catch(e){if(status)status.textContent='Could not publish: '+e.message;if(btn)btn.disabled=false}
+  }
   function currentView(){
     const buttons=[...document.querySelectorAll("#analyticsTabs button")];
     buttons.forEach(b=>b.classList.toggle("active",b.dataset.analytic===analyticsPage));
   }
+  $a('analyticsBody')?.addEventListener('click',e=>{
+    const btn=e.target.closest('#publishWeeklyHighlights');
+    if(btn)publishWeeklyRecap(Number(btn.dataset.week));
+  });
   function renderAnalytics(){
     currentView();const root=$a("analyticsBody");if(!root)return;
     if(!data){root.innerHTML='<div class="notice">Waiting for live LeagueLeader data. Try Refresh stats.</div>';return;}
@@ -274,13 +324,14 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const ms=matchData();const week=ms.length?Math.max(...ms.map(m=>m.week)):null,latest=ms.filter(m=>m.week===week);
       const sweeps=latest.filter(m=>m.wins.every(i=>i===m.wins[0]));
       const games=latest.map(m=>({m,score:won(m,m.teams[0])})).sort((a,b)=>Math.abs(7-2*a.score)-Math.abs(7-2*b.score));
-      const upset=latest.map(m=>{const rates=m.teams.map(rate),winner=won(m,m.teams[0])>3?0:1;return {m,winner,spread:rates[1-winner]-rates[winner]}}).filter(x=>x.spread>0).sort((a,b)=>b.spread-a.spread)[0];
+      const upset=latest.map(upsetFor).filter(Boolean).sort((a,b)=>b.spread-a.spread)[0];
       html+=pageTitle(`Week ${week||"—"} Highlights`,"Automatically calculated from completed seven-game matches. These are descriptive recaps, not official awards.");
       html+=cards(metric("Completed matchups",latest.length,"In this week")+metric("7–0 sweeps",sweeps.length,"Clean sweeps")+metric("Closest result",games.length?`${Math.min(...games.map(g=>Math.abs(7-2*g.score)))}-game margin`:"—","One-game difference is 4–3")+metric("Games recorded",latest.length*7,"Across complete matches"));
       html+=`<h3>Top stories</h3>`;
       html+=sweeps.map(m=>`<div class="arecap">🧹 <b>Sweep:</b> ${safe(m.teams[m.wins[0]])} took all seven against ${safe(m.teams[1-m.wins[0]])}.</div>`).join("")||'<p>No 7–0 sweeps this week.</p>';
-      if(upset)html+=`<div class="arecap">⚡ <b>Retrospective upset:</b> ${safe(upset.m.teams[upset.winner])} beat ${safe(upset.m.teams[1-upset.winner])}, despite having a lower current season game-win percentage.</div>`;
-      html+=`<div class="anote">Upsets use current standings, not pre-match standings. Recaps are generated on the page and are not automatically posted or pinned on the bulletin board.</div>`;
+      if(upset)html+=`<div class="arecap">⚡ <b>Upset:</b> ${safe(upset.m.teams[upset.winner])} beat ${safe(upset.m.teams[1-upset.winner])}, despite entering the week with a lower game-win rate.</div>`;
+      html+=`<div class="anote">Upsets compare the teams' game-win rates from completed prior weeks only. Teams without earlier results are not eligible for an upset label. Weekly recaps can be posted and pinned as official Community announcements by an officer.</div>`;
+      if(bmod&&bu&&recapFor(week))html+='<p><button type="button" class="btn primary" id="publishWeeklyHighlights" data-week="'+week+'">📌 Publish & pin Week '+week+' recap</button><span id="weeklyRecapStatus" class="mini muted" style="margin-left:10px"></span></p>';
     } else if(analyticsPage==="power"){
       html+=pageTitle("Analytical Power Rankings","Not the official standings. Rating formula is 60% last-three-match game win rate + 30% season rate + 10% opponent strength.");
       html+=table(["#","Team","Rating","Last 3","Season","Opponent strength"],ranks().map((r,i)=>row([String(i+1),safe(r.name),r.score.toFixed(1),pct(r.recent),pct(r.overall),pct(r.strength)])));
