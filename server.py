@@ -296,6 +296,120 @@ def get_individual_games(rr):
        'player_count':len(people),'game_count':scanned,'players':people}
 
 
+def normalize_individual_report(result):
+    """Make one auditable, canonical seven-slot match per four 01 + three
+    Cricket entries. Preserve original rows and their source-relative order.
+
+    This is a local transformation of LeagueLeader data; it never edits
+    their published report or invents an absent score.
+    """
+    normalized=[]
+    order=('PPD','MPR','PPD','MPR','PPD','MPR','PPD')
+    for person in result['players']:
+        ppd=[g for g in person['games'] if g['metric']=='PPD']
+        mpr=[g for g in person['games'] if g['metric']=='MPR']
+        for metric,items in (('PPD',ppd),('MPR',mpr)):
+            for i,g in enumerate(items):
+                g['source_metric_index']=i
+                g['source_metric_total']=len(items)
+        blocks=min(len(ppd)//4,len(mpr)//3)
+        person['normalized_blocks']=[]
+        for i in range(blocks):
+            # Underlying source is grouped by metric. The league's real
+            # game order interleaves the 01 and Cricket reports.
+            one=ppd[4*i:4*i+4]
+            cr=mpr[3*i:3*i+3]
+            merged=[one[0],cr[0],one[1],cr[1],
+                    one[2],cr[2],one[3]]
+            item={'source_block':i+1,'complete':True,
+                  'game_count':len(merged),
+                  'rows':[{'game_number':j+1,'metric':g['metric'],
+                     'rate':g['rate'],'win':g['win'],
+                     'source_metric_index':g['source_metric_index'],
+                     'source_name':person['name']}
+                     for j,g in enumerate(merged)]}
+            person['normalized_blocks'].append(item)
+        person['normalization']={
+            'source_01_rows':len(ppd),'source_cricket_rows':len(mpr),
+            'possible_complete_blocks':blocks,
+            'unpaired_01_rows':len(ppd)-4*blocks,
+            'unpaired_cricket_rows':len(mpr)-3*blocks,
+            'source_order':'oldest_to_newest_per_metric',
+            'canonical_game_order':list(GAME_ORDER),
+            'complete_seven_game_rows':7*blocks}
+        normalized.append({'player':person['name'],'team':person['team'],
+            **person['normalization']})
+    result['preprocessing']={'status':'normalized',
+        'method':'Preserve original player rows; split ordered 01 and Cricket rows into 4+3 blocks and interleave the seven known league formats',
+        'players':normalized}
+    return result
+
+
+def assign_normalized_report_weeks(result):
+    """Use *only* defensible complete-chronology or organizer evidence.
+
+    A player with a complete block for EVERY scheduled elapsed week can be
+    assigned in chronological order without requiring separately parsed
+    team-game wins. Missed weeks require better matching data.
+    Organizer-confirmed Week 3 is an additional anchor, but may only
+    assign the final 4+3 source rows when Week 3 is still the latest
+    scheduled played week and the 12.82 score is uniquely last in 01.
+    """
+    today=datetime.now().date()
+    elapsed=sorted((w for w in SCHEDULE
+        if datetime.strptime(w['date'],'%m/%d/%Y').date()<=today
+        and not any(m['home'].startswith('Rank ') for m in w['matches'])),
+        key=lambda w:int(w['num']))
+    known={int(w['num']):w['date'] for w in elapsed}
+    for person in result['players']:
+        ppd=[g for g in person['games'] if g['metric']=='PPD']
+        mpr=[g for g in person['games'] if g['metric']=='MPR']
+        full=person.get('normalized_blocks',[])
+        diag=person.setdefault('assignment_diagnostic',{})
+        assigned=0
+        if full and len(full)==len(elapsed) and (
+            len(ppd)==4*len(elapsed) and len(mpr)==3*len(elapsed)):
+            for i,week in enumerate(elapsed):
+                merged=[ppd[4*i],mpr[3*i],ppd[4*i+1],mpr[3*i+1],
+                        ppd[4*i+2],mpr[3*i+2],ppd[4*i+3]]
+                for n,g in enumerate(merged,1):
+                    if g.get('inferred_week') not in (None,week['num']):continue
+                    if g.get('inferred_week') is None:
+                        g['inferred_week']=int(week['num'])
+                        g['inferred_date']=week['date']
+                        g['inferred_game_number']=n
+                        g['week_confidence']='complete_report_preprocessing'
+                        assigned+=1
+        # Joe's documented final 01 rate on Wednesday October 28.
+        # If it is still the last 01 result at the end of Week 3, the
+        # preceding three 01 results and last three Cricket results form
+        # the same seven-game sequence. Never guess scores absent from
+        # the original report.
+        if (norm(person['name'])=='joebanker' and elapsed and
+            int(elapsed[-1]['num'])==3 and len(ppd)>=4 and len(mpr)>=3):
+            found=[i for i,g in enumerate(ppd)
+                if abs(float(g['rate'])-12.82)<0.005]
+            if found==[len(ppd)-1]:
+                merged=[ppd[-4],mpr[-3],ppd[-3],mpr[-2],
+                        ppd[-2],mpr[-1],ppd[-1]]
+                conflicts=[g for g in merged
+                    if g.get('inferred_week') not in (None,3)]
+                if not conflicts:
+                    for n,g in enumerate(merged,1):
+                        if g.get('inferred_week') is None:
+                            g['inferred_week']=3
+                            g['inferred_date']=known[3]
+                            g['inferred_game_number']=n
+                            g['week_confidence']='organizer_confirmed_normalized_last_block'
+                            assigned+=1
+                    diag['week_3_preprocessed_games']=7
+                else:diag['week_3_preprocess_conflicts']=len(conflicts)
+            else:
+                diag['week_3_preprocess_note']='12.82 is not the sole latest 01 result'
+        diag['normalized_preassignments']=assigned
+    return result
+
+
 def assign_candidate_weeks(result, matches):
     """Read per-player report rows oldest first, newest last.
 
@@ -734,7 +848,10 @@ def individual_game_stats():
         if player_games_cache['payload'] and time.time()-player_games_cache['at']<300:
             return jsonify(player_games_cache['payload'])
         _,soup=fetch(PLAYER_DETAIL)
-        result=get_individual_games(rows(soup))
+        result=normalize_individual_report(get_individual_games(rows(soup)))
+        # Transform the source report into inspectable ordered blocks FIRST.
+        # Only then perform team schedule alignment.
+        result=assign_normalized_report_weeks(result)
         official=refresh()
         result=assign_candidate_weeks(result,official['matches'])
         joe=next((p for p in result['players'] if norm(p['name'])=='joebanker'),None)
