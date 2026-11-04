@@ -901,6 +901,128 @@ def careers():
     try:return jsonify(historical_careers())
     except Exception as error:return jsonify({'error':str(error)[:200]}),503
 
+
+# Official cumulative scoring achievements from the organizer-provided LeagueLeader report.
+# These values are NOT estimated by summing inferred individual week assignments.
+ACHIEVEMENTS_REPORT='https://leagueleader.net/sharedreport.php?operatorid=497&code=b4ac42c8-fc0b-48ad-9a93-8830123b52b4'
+achievement_cache={'at':0,'payload':None}
+SCORING_KEYS={
+ 'low_tons':{'LTON','LTONS','LOWTON','LOWTONS'},
+ 'high_tons':{'HTON','HTONS','HIGHTON','HIGHTONS'},
+ 'ton_80s':{'TON80','TON80S','180','180S'},
+ 'white_horses':{'WHORSE','WHORSES','WHRSE','WHITEHORSE','WHITEHORSES'},
+ 'marks_5':{'5MR','5MARK','5MARKS'},
+ 'marks_6':{'6MR','6MARK','6MARKS'},
+ 'marks_7':{'7MR','7MARK','7MARKS'},
+ 'marks_8':{'8MR','8MARK','8MARKS'},
+ 'marks_9':{'9MR','9MARK','9MARKS'},
+}
+def scoring_header(s):
+    return re.sub(r'[^A-Z0-9]','',str(s).upper())
+
+def parse_scoring_report(soup):
+    """Read organizer's cumulative achievement columns, not per-game rows.
+    Separate 01 hats and Cricket hats by the corresponding PPD/MPR section.
+    A report can contain an All Games summary as well as game-format rows:
+    prefer its summary rather than double-counting both sources.
+    """
+    parsed=[]
+    table_count=0
+    columns_seen=set()
+    for table in soup.find_all('table'):
+        current=None
+        heading=table.find_previous(['h2','h3','h4'])
+        title=heading.get_text(' ',strip=True) if heading else ''
+        all_games='all ' in title.lower() or 'all x01' in title.lower() or 'all cricket' in title.lower()
+        for tr in table.find_all('tr'):
+            cells=tr.find_all(['td','th'],recursive=False)
+            if not cells:cells=tr.find_all(['td','th'])
+            row=[x.get_text(' ',strip=True) for x in cells]
+            keys=[scoring_header(x) for x in row]
+            if 'PLAYER' in keys and 'GAMES' in keys and ('PPD' in keys or 'MPR' in keys):
+                current=keys
+                table_count+=1
+                continue
+            if not current or not row or len(row)!=len(current):continue
+            try:
+                name=row[current.index('PLAYER')].strip()
+            except (ValueError,IndexError):continue
+            if not name or name.lower().startswith(('team totals','division','summary','player')):continue
+            team=row[current.index('TEAM')].strip() if 'TEAM' in current else ''
+            game_count=_number(row[current.index('GAMES')])
+            if game_count is None or game_count<=0:continue
+            metric='MPR' if 'MPR' in current and 'PPD' not in current else 'PPD'
+            if 'MPR' in current and 'PPD' in current:metric='BOTH'
+            stats={}
+            for label,valid in SCORING_KEYS.items():
+                positions=[i for i,key in enumerate(current) if key in valid]
+                if not positions:continue
+                for idx in positions:
+                    n=_number(row[idx])
+                    if n is not None and n>=0 and n==int(n):
+                        stats[label]=stats.get(label,0)+int(n)
+                        columns_seen.add(label)
+            hats=[i for i,key in enumerate(current) if key in {'HAT','HATS','HATTRICK','HATTRICKS'}]
+            if hats:
+                if metric=='BOTH':
+                    ppd_i=current.index('PPD')
+                    mpr_i=current.index('MPR')
+                    for i in hats:
+                        n=_number(row[i])
+                        if n is not None and n>=0 and n==int(n):
+                            key='hats_01' if ppd_i<i<mpr_i else 'hats_cricket' if i>mpr_i else None
+                            if key:
+                                stats[key]=stats.get(key,0)+int(n);columns_seen.add(key)
+                else:
+                    key='hats_01' if metric=='PPD' else 'hats_cricket'
+                    vals=[_number(row[i]) for i in hats]
+                    for n in vals:
+                        if n is not None and n>=0 and n==int(n):
+                            stats[key]=stats.get(key,0)+int(n);columns_seen.add(key)
+            if not stats:continue
+            parsed.append({'name':name,'team':team,'metric':metric,'games':int(game_count),
+                           'stats':stats,'all_games':all_games,'source_section':title})
+    merged={}
+    # A player may appear in multiple formats. Use an explicit all-game
+    # summary if present to prevent aggregating it alongside subformats.
+    for entry in parsed:
+        key=(norm(entry['name']),norm(entry['team']))
+        player=merged.setdefault(key,{'name':entry['name'],'team':entry['team'],'entries':[]})
+        player['entries'].append(entry)
+    players=[]
+    for player in merged.values():
+        totals={}
+        for stat in SCORING_KEYS.keys()|{'hats_01','hats_cricket'}:
+            sources=[e for e in player['entries'] if stat in e['stats']]
+            if any(e['all_games'] for e in sources):
+                sources=[e for e in sources if e['all_games']]
+            totals[stat]=sum(e['stats'][stat] for e in sources) if sources else None
+        players.append({'name':player['name'],'team':player['team'],'achievements':totals})
+    players.sort(key=lambda p:(p['name'].lower(),p['team'].lower()))
+    return {'source':'Official LeagueLeader cumulative scoring report',
+            'report_url':ACHIEVEMENTS_REPORT,
+            'players':players,'player_count':len(players),
+            'table_count':table_count,'reported_categories':sorted(columns_seen),
+            'raw_player_rows':len(parsed)}
+
+@app.route('/api/scoring-records')
+def scoring_records():
+    now=time.time()
+    if achievement_cache['payload'] and now-achievement_cache['at']<300:
+        return jsonify(achievement_cache['payload'])
+    try:
+        _,soup=fetch(ACHIEVEMENTS_REPORT)
+        result=parse_scoring_report(soup)
+        if result['table_count']==0 or result['raw_player_rows']==0:
+            return jsonify({'error':'Scoring report has no recognizable player achievement tables',
+                            'tables':result['table_count'],'rows':result['raw_player_rows']}),503
+        achievement_cache.update({'at':now,'payload':result})
+        return jsonify(result)
+    except Exception as error:
+        if achievement_cache['payload']:
+            return jsonify({**achievement_cache['payload'],'stale':True})
+        return jsonify({'error':'Could not load official scoring report: '+str(error)}),503
+
 @app.route('/api/player-games')
 def individual_game_stats():
     """Standalone optional statistics API. A failure cannot break /api/live."""
