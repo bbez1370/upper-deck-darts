@@ -302,8 +302,9 @@ function renderWeeklyTrends(){
  const sum=lastThree.reduce((a,w)=>({wins:a.wins+w.wins,games:a.games+w.games}),{wins:0,games:0});
  const span=weeks.length?weeks[0].week+'–'+weeks.at(-1).week:'—';
  root.innerHTML='<h3>📈 2026–27 weekly performance</h3>'+
-  '<p class="small muted">Current season only. A week is shown when the individual game can be uniquely aligned to the dated team schedule. These week assignments are inferred, not printed on the source report.</p>'+
+  '<p class="small muted">Current season only. Games are read oldest to newest, then aligned to the dated team results using the seven-game order: 301, Cricket, 501, Cricket, 701, Cricket, 501. Skipped weeks stay skipped; dates are inferred from verified match alignment, not printed in the player report.</p>'+
   (weeklyError?'<p class="season-warning">'+safe(weeklyError)+'</p>':'')+
+  '<p class="small muted">'+Number(weeklyData.matching?.full_medley_assigned||0)+' individual game entries across the league matched by complete seven-game sequences.</p>'+ 
   '<div class="weekgrid">'+
    '<div class="weekmetric"><span class="small">Weeks represented</span><strong>'+weeks.length+'</strong><span class="small muted">Weeks '+span+'</span></div>'+
    '<div class="weekmetric"><span class="small">Last 3 represented weeks</span><strong>'+sum.wins+'/'+sum.games+'</strong><span class="small muted">Individual game wins</span></div>'+
