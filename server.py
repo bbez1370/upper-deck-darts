@@ -612,10 +612,17 @@ def individual_game_stats():
         result=assign_candidate_weeks(result,official['matches'])
         joe=next((p for p in result['players'] if norm(p['name'])=='joebanker'),None)
         if joe:
-            last=next((g for g in reversed(joe['games']) if g['metric']=='PPD'),None)
-            result['joe_last_01_check']={'last_ppd':last['rate'],'inferred_week':last.get('inferred_week'),
-                'inferred_date':last.get('inferred_date'), 'candidate_weeks':last.get('candidate_weeks',[]),
-                'matches_user_reported_12_82':abs(last['rate']-12.82)<0.005} if last else None
+            # Organizer-confirmed regression example from October 28, 2026.
+            # Find the matching result by PPD, not by "last", because more
+            # weeks will be added to this live report.
+            known=[g for g in joe['games'] if g['metric']=='PPD' and abs(g['rate']-12.82)<0.005]
+            result['joe_week_3_check']={
+                'expected_ppd':12.82,'expected_week':3,
+                'expected_date':'10/28/2026','matching_game_count':len(known),
+                'matched_week':known[0].get('inferred_week') if len(known)==1 else None,
+                'matched_date':known[0].get('inferred_date') if len(known)==1 else None,
+                'passes':len(known)==1 and known[0].get('inferred_week')==3
+            }
         if result['game_count']<20 or result['player_count']<5:
             raise ValueError('Unrecognized player game table layout; no fabricated records returned.')
         result['updated']=datetime.now().astimezone().isoformat(timespec='seconds')
