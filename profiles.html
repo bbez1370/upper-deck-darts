@@ -318,12 +318,12 @@ function renderWeeklyTrends(){
   '<div class="weekmetric"><span class="small">01 PPD</span><strong>'+average(shownWeek.PPD)+'</strong><span class="small muted">'+shownWeek.PPD.length+' games</span></div>'+
   '<div class="weekmetric"><span class="small">Cricket MPR</span><strong>'+average(shownWeek.MPR)+'</strong><span class="small muted">'+shownWeek.MPR.length+' games</span></div>'+
   '<div class="weekmetric"><span class="small">Game wins</span><strong>'+shownWeek.wins+'/'+shownWeek.games+'</strong><span class="small muted">Assigned individual games</span></div></div>'+
-  '<div class="week-game-table tablebox"><table><thead><tr><th>Game #</th><th>Format</th><th>PPD / MPR</th><th>Result</th></tr></thead><tbody>'+
+  '<div class="week-game-table tablebox"><table><thead><tr><th>Game #</th><th>Format</th><th>PPD / MPR</th></tr></thead><tbody>'+
   [...shownWeek.details].sort((a,b)=>(a.inferred_game_number||99)-(b.inferred_game_number||99)).map(g=>'<tr>'+
   '<td>'+safe(g.inferred_game_number||'—')+'</td>'+
   '<td>'+safe(g.inferred_game_format||(['301 D/D','Cricket','501 D/D','Cricket','701 O/D','Cricket','501 D/D'][Number(g.inferred_game_number)-1])||g.game||g.metric)+'</td>'+
   '<td>'+Number(g.rate).toFixed(2)+' '+safe(g.metric)+'</td>'+
-  '<td>'+(g.win?'Win':'Loss')+'</td></tr>').join('')+'</tbody></table></div></div>':
+  '</tr>').join('')+'</tbody></table></div></div>':
   '<div class="week-highlight"><h4>Week '+selectedWeek+'</h4>'+
   '<p class="muted">No individually verified games have been assigned to this week for this player. This does not mean the player did not play.</p>'+
   (r.unassigned?'<p class="small">There are '+r.unassigned+' unassigned games. They may include this week; the report does not identify an unambiguous date for them.</p>':'')+'</div>';
