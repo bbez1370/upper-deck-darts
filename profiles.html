@@ -7,6 +7,7 @@
 .profile-hero{display:flex;align-items:center;gap:18px;padding-bottom:16px;border-bottom:1px solid #315147;margin-bottom:14px}.profile-hero h2{font-size:clamp(24px,3vw,34px);margin:2px 0 5px}.profile-tabs{display:flex;gap:6px;overflow:auto;scrollbar-width:thin;border-bottom:1px solid #35594c;padding-bottom:9px;margin:6px 0 22px}.profile-tabs button{border:1px solid #345d51;background:#0f2830;color:#c3ded4;border-radius:10px;padding:12px 14px;min-width:max-content;font-size:13px;font-weight:700}.profile-tabs button.active{background:#62dca3;border-color:#62dca3;color:#062b1e}.profile-tabs button:focus-visible,.player:focus-visible{outline:3px solid #ace8cd;outline-offset:2px}.profile-eyebrow{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.13em;color:#8be3af}.profile-section-title{margin:9px 0 4px;font-size:23px}.profile-subtitle{font-size:13px;color:#b4ccc2;line-height:1.6;margin:5px 0 18px}.profile-stack{display:grid;gap:12px}.overview-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.overview-tile{background:#0e3029;border:1px solid #315f4c;border-radius:13px;padding:17px}.overview-tile strong{display:block;font-size:27px;color:#aff7d0}.overview-tile span{display:block;color:#b8cfc4;font-size:12px}.sectionlink{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;border:1px solid #355d4e;border-radius:12px;padding:15px;background:#102a30;color:#e4f6ed;font:inherit;cursor:pointer}.sectionlink:hover{background:#183d35}.stat-table{width:100%;min-width:470px}.empty-profile{padding:23px;background:#0e222c;border-radius:12px;color:#bed4cb}.subtle-label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#9bcbb4}.season-chip{display:inline-block;padding:6px 10px;border-radius:99px;background:#153b32;color:#c8ffe2;font-size:12px;margin:6px 0}@media(max-width:760px){.profile-hero{align-items:flex-start}.profile-hero .avatar{width:78px;height:78px;flex:none}.overview-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.profile-tabs{margin-left:-5px;margin-right:-5px}.profile-tabs button{padding:11px 10px}.sectionlink{padding:13px}}@media(max-width:420px){.overview-tiles{grid-template-columns:1fr 1fr}.overview-tile{padding:12px}.overview-tile strong{font-size:22px}}
 .week-selector{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:13px;background:#0e2928;border:1px solid #3f6e55;border-radius:12px;margin:14px 0}.week-selector label{font-weight:750}.week-selector select{width:auto;min-width:150px}.week-highlight{border:1px solid #3d7860;border-radius:14px;background:#10382c;padding:17px;margin-bottom:15px}.week-highlight h4{margin:0 0 10px;font-size:19px}.week-game-table{margin:12px 0 0}.week-game-table table{min-width:340px}.profile-upload-hint{display:flex;align-items:center;gap:10px;font-size:12px;color:#a9c5b8}.profile-upload-hint a{color:#a8f2ce}
 img[hidden]{display:none!important}
+.player-identity-card{background:linear-gradient(135deg,#193f39,#102830);border:1px solid #39745e;border-radius:17px;padding:20px;margin-bottom:17px}.player-identity-card .profile-hero{border-bottom:0;padding-bottom:0;margin-bottom:8px;align-items:center}.player-identity-card .avatar{width:124px;height:124px;min-width:124px;border-radius:50%;border:3px solid #6cdaa9;object-fit:cover}.profile-identity{min-width:0}.profile-nickname{color:#afe6cb;margin:3px 0 6px}.profile-about{border-top:1px solid #376454;padding-top:13px;margin-top:13px}.profile-about-label{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#9be9bf;margin:0 0 5px}.profile-card-bio{margin:7px 0 9px;line-height:1.55;white-space:pre-line;overflow-wrap:anywhere}.profile-gear{font-size:12px;color:#b7e3ce;margin:5px 0}.directory-avatar{width:42px;height:42px;border-radius:50%;border:1px solid #447861;object-fit:cover;flex-shrink:0}.directory-avatar.placeholder{font-size:13px}.directory-player-main{display:flex;gap:11px;align-items:center}.directory-player-text{min-width:0}.directory-player-text b{display:block;overflow-wrap:anywhere}@media(max-width:760px){.player-identity-card{padding:14px}.player-identity-card .avatar{width:88px;height:88px;min-width:88px}.player-identity-card .profile-hero{gap:12px}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script></head>
 <body><header><div><a href="/">← Back to Upper Deck</a><p class="eyebrow">2021 to present · League history</p><h1>Official Player Records</h1><p class="muted">Upper Deck's official player history from the inaugural 2021–22 season through today.</p></div></header>
@@ -125,7 +126,7 @@ async function load(){
   renderNames();renderCoverage();renderAccount();renderOfficer();renderCleanup();renderCareerAudit();renderOfficialRankings();
   const url=new URL(location.href),requested=url.searchParams.get('player');
   const tab=url.searchParams.get('tab');
-  if(['overview','current','history','trends','bio'].includes(tab))playerTab=tab;
+  if(['overview','current','history','trends'].includes(tab))playerTab=tab;
   const week=Number(url.searchParams.get('week'));
   if(Number.isInteger(week)&&week>=1&&week<=30)selectedWeek=week;
   chosen=playerFor(requested)?.name||career.players?.[0]?.name||'';
@@ -179,7 +180,7 @@ function renderPlayer(){
  const pub=profileFor(p.name),seasons=[...new Set(p.seasons.map(r=>r.season))].sort();
  const current=seasonGroup(p,'2026–27');
  const linked=claims.some(c=>c.user_id===user?.id&&c.status==='approved'&&equal(c.player_name,p.name));
- const tabs=[['overview','Overview'],['current','2026–27 Stats'],['history','Career History'],['trends','Weekly Trends'],['bio','Bio & Gear']];
+ const tabs=[['overview','Overview'],['current','2026–27 Stats'],['history','Career History'],['trends','Weekly Trends']];
  const tabButtons='<div class="profile-tabs" role="tablist" aria-label="Player profile sections">'+
   tabs.map(([id,label])=>'<button type="button" role="tab" aria-selected="'+(playerTab===id)+'" data-player-tab="'+id+'" class="'+(playerTab===id?'active':'')+'">'+label+'</button>').join('')+'</div>';
  const currentMetric=(metric)=>current[metric]?Number(current[metric].average).toFixed(2):'—';
@@ -200,8 +201,7 @@ function renderPlayer(){
    '</div>'+errors+'<div class="profile-stack" style="margin-top:17px">'+
    helper('current','🎯 Current season statistics')+
    helper('history','🏆 Full career and historical seasons')+
-   helper('trends','📈 Weekly performance trends (select Week 3)')+
-   helper('bio','👤 Player bio, nickname and darts')+'</div>';
+   helper('trends','📈 Weekly performance trends (select Week 3)')+'</div>';
  }else if(playerTab==='current'){
   content='<p class="profile-eyebrow">Active season</p><h3 class="profile-section-title">2026–27 Season Stats</h3>'+currentLabel()+
    '<div class="overview-tiles">'+
@@ -236,20 +236,20 @@ function renderPlayer(){
    content='<p class="profile-eyebrow">Current season</p><h3 class="profile-section-title">Week-by-Week Trends</h3>'+
     '<p class="profile-subtitle">See game-level scoring changes during the 2026–27 season. Historical reports provide season totals, not reliably dated weekly games.</p>'+
     '<div id="weeklyPlayerTrends" aria-live="polite"></div>';
- }else{
-  content='<p class="profile-eyebrow">Meet the player</p><h3 class="profile-section-title">Bio & Darts</h3>'+
-   bioContent+
-   (!pub?.avatar_path?'<p class="profile-upload-hint">📷 No player photo has been uploaded yet. The player can add one under <b>Your profile</b> after signing in.</p>':'')+
-   '<div class="profile-stack">'+
-   '<div class="overview-tile"><span>Nickname</span><strong style="font-size:19px">'+safe(pub?.nickname||'Not added yet')+'</strong></div>'+
-   '<div class="overview-tile"><span>Favorite double</span><strong style="font-size:19px">'+safe(pub?.favorite_double||'Not added yet')+'</strong></div>'+
-   '<div class="overview-tile"><span>Darts setup</span><strong style="font-size:19px">'+safe(pub?.darts_setup||'Not added yet')+'</strong></div></div>'+
-   (linked?'<p class="notice">This is your claimed player profile. Edit your bio and gear details under <b>Your profile</b>.</p>':
-    '<p class="profile-subtitle">To update this bio, the player must sign in, save their details and have their player identity claim approved.</p>');
+
  }
- root.innerHTML='<div class="profile-hero">'+avatar(pub,p.name)+
-  '<div><p class="profile-eyebrow">Official Upper Deck player</p><h2>'+safe(pub?.display_name||p.name)+'</h2>'+
-  '<p class="muted">'+safe(pub?.nickname||'League member')+'</p><span class="season-chip">'+seasons.length+' season'+(seasons.length===1?'':'s')+' on record</span></div></div>'+
+ const profileBio=pub?.bio?'<p class="profile-card-bio">'+safe(pub.bio)+'</p>':
+   '<p class="profile-card-bio muted">'+(linked?'Add a short bio under Your Profile.':'Bio not added yet.')+'</p>';
+ const gear=[pub?.favorite_double?'Favorite double: '+safe(pub.favorite_double):'',
+             pub?.darts_setup?'Darts: '+safe(pub.darts_setup):''].filter(Boolean);
+ root.innerHTML='<div class="player-identity-card"><div class="profile-hero">'+avatar(pub,p.name)+
+  '<div class="profile-identity"><p class="profile-eyebrow">Official Upper Deck player</p><h2>'+safe(pub?.display_name||p.name)+'</h2>'+
+  (pub?.nickname?'<p class="profile-nickname">“'+safe(pub.nickname)+'”</p>':'')+
+  '<span class="season-chip">'+seasons.length+' season'+(seasons.length===1?'':'s')+' on record</span></div></div>'+
+  '<div class="profile-about"><p class="profile-about-label">About the player</p>'+profileBio+
+  (gear.length?'<p class="profile-gear">'+gear.join(' · ')+'</p>':'')+
+  (linked?'<p class="small muted">This is your player profile. You can update your photo and bio in Your Profile.</p>':'')+
+  '</div></div>'+
   tabButtons+'<div id="profileTabBody" role="tabpanel">'+content+'</div>';
  root.querySelectorAll('[data-player-tab],[data-go-tab]').forEach(button=>button.addEventListener('click',()=>{
   playerTab=button.dataset.playerTab||button.dataset.goTab;
