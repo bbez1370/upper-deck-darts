@@ -1,6 +1,8 @@
 """Regression tests for LeagueLeader oldest-to-newest weekly matching."""
 import unittest
-from server import assign_candidate_weeks, GAME_ORDER
+from server import (assign_candidate_weeks, normalize_individual_report,
+                    assign_normalized_report_weeks, GAME_ORDER)
+from unittest.mock import patch
 
 DATES={1:'10/14/2026',2:'10/21/2026',3:'10/28/2026'}
 KIND=lambda x:'MPR' if x=='Cricket' else 'PPD'
@@ -80,6 +82,31 @@ class WeeklyMappingTests(unittest.TestCase):
         result=assign_candidate_weeks(report,[])
         self.assertEqual(result['matching']['assigned'],0)
         self.assertEqual(result['matching']['unmatched'],7)
+
+    def test_preprocess_3_complete_match_blocks_before_team_report(self):
+        report=player_result(self.matches,[1,2,3])
+        calendar=[{'num':i,'date':DATES[i],'matches':[{'home':'Conway Banker','away':'Opponent'}]} for i in (1,2,3)]
+        with patch('server.SCHEDULE',calendar):
+            result=normalize_individual_report(report)
+            result=assign_normalized_report_weeks(result)
+        self.assertEqual(len(result['players'][0]['normalized_blocks']),3)
+        self.assertEqual(result['players'][0]['normalization']['unpaired_01_rows'],0)
+        self.assertEqual(result['players'][0]['normalization']['unpaired_cricket_rows'],0)
+        self.assertEqual(result['players'][0]['assignment_diagnostic']['normalized_preassignments'],21)
+        games=result['players'][0]['games']
+        self.assertEqual([sum(g.get('inferred_week')==i for g in games) for i in (1,2,3)],[7,7,7])
+
+    def test_preprocess_final_seven_week3_without_team_matches(self):
+        report=player_result(self.matches,[2,3])
+        calendar=[{'num':i,'date':DATES[i],'matches':[{'home':'Conway Banker','away':'Opponent'}]} for i in (1,2,3)]
+        with patch('server.SCHEDULE',calendar):
+            result=assign_normalized_report_weeks(normalize_individual_report(report))
+        week3=[g for g in result['players'][0]['games'] if g.get('inferred_week')==3]
+        self.assertEqual(len(week3),7)
+        self.assertEqual(sorted(g['inferred_game_number'] for g in week3),list(range(1,8)))
+        self.assertEqual(result['players'][0]['assignment_diagnostic']['week_3_preprocessed_games'],7)
+        # Previous week's source rows remain unassigned, never fabricated.
+        self.assertEqual(sum(g.get('inferred_week') is None for g in result['players'][0]['games']),7)
 
     def test_ambiguous_week_not_guessed(self):
         identical=[match(i,[0,1,0,1,0,1,0]) for i in (1,2,3)]
