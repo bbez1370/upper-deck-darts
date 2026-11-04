@@ -907,103 +907,115 @@ def careers():
 ACHIEVEMENTS_REPORT='https://leagueleader.net/sharedreport.php?operatorid=497&code=b4ac42c8-fc0b-48ad-9a93-8830123b52b4'
 achievement_cache={'at':0,'payload':None}
 SCORING_KEYS={
- 'low_tons':{'LTON','LTONS','LOWTON','LOWTONS'},
- 'high_tons':{'HTON','HTONS','HIGHTON','HIGHTONS'},
- 'ton_80s':{'TON80','TON80S','180','180S'},
- 'white_horses':{'WHORSE','WHORSES','WHRSE','WHITEHORSE','WHITEHORSES'},
- 'marks_5':{'5MR','5MARK','5MARKS'},
- 'marks_6':{'6MR','6MARK','6MARKS'},
- 'marks_7':{'7MR','7MARK','7MARKS'},
- 'marks_8':{'8MR','8MARK','8MARKS'},
- 'marks_9':{'9MR','9MARK','9MARKS'},
+ 'low_tons':{'LT','LTON','LTONS','LOWTON','LOWTONS','LOWTON100'},
+ 'high_tons':{'HT','HTON','HTONS','HIGHTON','HIGHTONS'},
+ 'ton_80s':{'180','180S','TON80','TON80S','T80','T80S'},
+ 'hat_tricks':{'HAT','HATS','HATTRICK','HATTRICKS'},
+ 'white_horses':{'WH','WHORSE','WHORSES','WHRSE','WHITEHORSE','WHITEHORSES'},
+ 'marks_5':{'5M','5MR','5MARK','5MARKS'},
+ 'marks_6':{'6M','6MR','6MARK','6MARKS'},
+ 'marks_7':{'7M','7MR','7MARK','7MARKS'},
+ 'marks_8':{'8M','8MR','8MARK','8MARKS'},
+ 'marks_9':{'9M','9MR','9MARK','9MARKS'},
 }
 def scoring_header(s):
     return re.sub(r'[^A-Z0-9]','',str(s).upper())
 
 def parse_scoring_report(soup):
-    """Read organizer's cumulative achievement columns, not per-game rows.
-    Separate 01 hats and Cricket hats by the corresponding PPD/MPR section.
-    A report can contain an All Games summary as well as game-format rows:
-    prefer its summary rather than double-counting both sources.
+    """Read organizer-supplied achievement counts, never reconstruct throws.
+
+    Support both performance tables (Player / PPD / Games / achievements)
+    and achievement-only tables (Player / Low Ton / Hat Trick / ...).
+    Duplicate tables and all-format summary rows must not inflate counts.
     """
     parsed=[]
-    table_count=0
-    columns_seen=set()
-    for table in soup.find_all('table'):
-        current=None
-        heading=table.find_previous(['h2','h3','h4'])
+    detected_headers=[]
+    category_keys={key:set(labels) for key,labels in SCORING_KEYS.items()}
+    player_headers={'PLAYER','PLAYERNAME','NAME'}
+    team_headers={'TEAM','TEAMNAME'}
+    for table_index,table in enumerate(soup.find_all('table')):
+        heading=table.find_previous(['h2','h3','h4','h5'])
         title=heading.get_text(' ',strip=True) if heading else ''
-        all_games='all ' in title.lower() or 'all x01' in title.lower() or 'all cricket' in title.lower()
+        section_context=title.lower()
+        header=None
+        current_team=''
         for tr in table.find_all('tr'):
             cells=tr.find_all(['td','th'],recursive=False)
             if not cells:cells=tr.find_all(['td','th'])
             row=[x.get_text(' ',strip=True) for x in cells]
+            if not row:continue
+            if row[0].strip().lower() in ('team:', 'team') and len(row)>1 and row[1].strip():
+                current_team=row[1].strip()
             keys=[scoring_header(x) for x in row]
-            if 'PLAYER' in keys and 'GAMES' in keys and ('PPD' in keys or 'MPR' in keys):
-                current=keys
-                table_count+=1
+            categories={label:[i for i,k in enumerate(keys) if k in variants]
+                        for label,variants in category_keys.items()}
+            is_header=bool(set(keys)&player_headers) and any(categories.values())
+            if is_header:
+                header=keys
+                detected_headers.append({'table':table_index,'section':title,
+                                         'columns':row[:50]})
                 continue
-            if not current or not row or len(row)!=len(current):continue
-            try:
-                name=row[current.index('PLAYER')].strip()
-            except (ValueError,IndexError):continue
-            if not name or name.lower().startswith(('team totals','division','summary','player')):continue
-            team=row[current.index('TEAM')].strip() if 'TEAM' in current else ''
-            game_count=_number(row[current.index('GAMES')])
-            if game_count is None or game_count<=0:continue
-            metric='MPR' if 'MPR' in current and 'PPD' not in current else 'PPD'
-            if 'MPR' in current and 'PPD' in current:metric='BOTH'
-            stats={}
-            for label,valid in SCORING_KEYS.items():
-                positions=[i for i,key in enumerate(current) if key in valid]
-                if not positions:continue
-                for idx in positions:
-                    n=_number(row[idx])
-                    if n is not None and n>=0 and n==int(n):
-                        stats[label]=stats.get(label,0)+int(n)
-                        columns_seen.add(label)
-            hats=[i for i,key in enumerate(current) if key in {'HAT','HATS','HATTRICK','HATTRICKS'}]
-            if hats:
-                if metric=='BOTH':
-                    ppd_i=current.index('PPD')
-                    mpr_i=current.index('MPR')
-                    for i in hats:
-                        n=_number(row[i])
-                        if n is not None and n>=0 and n==int(n):
-                            key='hats_01' if ppd_i<i<mpr_i else 'hats_cricket' if i>mpr_i else None
-                            if key:
-                                stats[key]=stats.get(key,0)+int(n);columns_seen.add(key)
-                else:
-                    key='hats_01' if metric=='PPD' else 'hats_cricket'
-                    vals=[_number(row[i]) for i in hats]
-                    for n in vals:
-                        if n is not None and n>=0 and n==int(n):
-                            stats[key]=stats.get(key,0)+int(n);columns_seen.add(key)
-            if not stats:continue
-            parsed.append({'name':name,'team':team,'metric':metric,'games':int(game_count),
-                           'stats':stats,'all_games':all_games,'source_section':title})
+            if header is None:continue
+            # Dividers and totals do not count as individual players.
+            indices=[i for i,k in enumerate(header) if k in player_headers]
+            if not indices or indices[0]>=len(row):continue
+            player=row[indices[0]].strip()
+            if not player or player.lower() in ('summary:','summary','total','totals',
+                                                 'player','team totals','division totals'):
+                continue
+            if player.lower().startswith(('summary:', 'total:', 'division:')):continue
+            team_index=next((i for i,k in enumerate(header) if k in team_headers),None)
+            team=row[team_index].strip() if team_index is not None and team_index<len(row) else current_team
+            values={}
+            for category,variants in category_keys.items():
+                indices=[i for i,k in enumerate(header) if k in variants]
+                if not indices:continue
+                observed=[_number(row[i]) for i in indices if i<len(row)]
+                counts=[int(n) for n in observed if n is not None and n>=0 and n==int(n)]
+                if counts:values[category]=sum(counts)
+            if not values:continue
+            # Do not mix summary totals and per-format detail rows.
+            context=(' '.join([section_context,' '.join(header)])).lower()
+            all_formats=any(t in context for t in ('all games','all formats','combined','overall'))
+            # Distinct 01 / Cricket sections may each supply their own hats.
+            metric='MPR' if 'MPR' in header and 'PPD' not in header else 'PPD' if 'PPD' in header and 'MPR' not in header else 'OTHER'
+            parsed.append({'name':player,'team':team,'metric':metric,'counts':values,
+                           'all_formats':all_formats,'table':table_index})
     merged={}
-    # A player may appear in multiple formats. Use an explicit all-game
-    # summary if present to prevent aggregating it alongside subformats.
     for entry in parsed:
         key=(norm(entry['name']),norm(entry['team']))
-        player=merged.setdefault(key,{'name':entry['name'],'team':entry['team'],'entries':[]})
-        player['entries'].append(entry)
+        person=merged.setdefault(key,{'name':entry['name'],'team':entry['team'],
+                                      'entries':[]})
+        person['entries'].append(entry)
     players=[]
+    categories_present=set()
     for player in merged.values():
         totals={}
-        for stat in SCORING_KEYS.keys()|{'hats_01','hats_cricket'}:
-            sources=[e for e in player['entries'] if stat in e['stats']]
-            if any(e['all_games'] for e in sources):
-                sources=[e for e in sources if e['all_games']]
-            totals[stat]=sum(e['stats'][stat] for e in sources) if sources else None
-        players.append({'name':player['name'],'team':player['team'],'achievements':totals})
+        for category in SCORING_KEYS:
+            entries=[entry for entry in player['entries'] if category in entry['counts']]
+            categories_present.update([category] if entries else [])
+            if not entries:
+                totals[category]=None
+                continue
+            all_game=[entry for entry in entries if entry['all_formats']]
+            if all_game:entries=all_game
+            # Each metric may have a separate report table. An identical
+            # repeat of a report should not double-count the same data.
+            by_source={}
+            for entry in entries:
+                source=(entry['metric'],entry['table'])
+                by_source[source]=max(by_source.get(source,0),entry['counts'][category])
+            totals[category]=sum(by_source.values())
+        players.append({'name':player['name'],'team':player['team'],
+                        'achievements':totals})
     players.sort(key=lambda p:(p['name'].lower(),p['team'].lower()))
-    return {'source':'Official LeagueLeader cumulative scoring report',
+    return {'source':'LeagueLeader scoring achievements report',
             'report_url':ACHIEVEMENTS_REPORT,
             'players':players,'player_count':len(players),
-            'table_count':table_count,'reported_categories':sorted(columns_seen),
-            'raw_player_rows':len(parsed)}
+            'table_count':len(detected_headers),
+            'reported_categories':sorted(categories_present),
+            'raw_player_rows':len(parsed),
+            'detected_headers':detected_headers[:20]}
 
 @app.route('/api/scoring-records')
 def scoring_records():
