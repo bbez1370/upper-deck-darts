@@ -475,11 +475,12 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const p=bestMetric("PPD"),m=bestMetric("MPR");
       const normalKey=k=>String(k||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
       const achievements=[
-        {label:"Low Tons",aliases:["LT","LOWTON","LOWTONS","100PLUS","100S"]},
+        {label:"Low Tons",aliases:["LT","LOWTON","LOWTONS","LTON","LTN","100PLUS","100S"]},
         {label:"Ton 80s (180)",aliases:["180","180S","TON80","TON80S","T80","T80S"]},
-        {label:"Hat Tricks",aliases:["HAT","HATS","HATTRICK","HATTRICKS","HTRICK","HTRICKS"]},
-        {label:"White Horses",aliases:["WH","WHITEHORSE","WHITEHORSES"]},
-        {label:"High Tons",aliases:["HT","HIGHTON","HIGHTONS"]},
+        {label:"Hat Tricks",aliases:["HAT","HATS","01HATS","CRKHATS","HATTRICK","HATTRICKS","HTRICK","HTRICKS"]},
+        {label:"White Horses",aliases:["WH","WHORSE","WHRSE","WHITEHORSE","WHITEHORSES"]},
+        {label:"High Tons",aliases:["HT","HTON","HTN","HIGHTON","HIGHTONS"]},
+        {label:"5 Marks",aliases:["5M","5MR","5MARK","5MARKS"]},
         {label:"6 Marks",aliases:["6M","6MR","6MARK","6MARKS"]},
         {label:"7 Marks",aliases:["7M","7MR","7MARK","7MARKS"]},
         {label:"8 Marks",aliases:["8M","8MR","8MARK","8MARKS"]},
