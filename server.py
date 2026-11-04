@@ -189,7 +189,10 @@ def refresh():
     return payload
 
 @app.route('/')
-def home():return send_from_directory(ROOT,'index.html')
+def home():
+    response=send_from_directory(ROOT,'index.html')
+    response.headers['Cache-Control']='no-store, max-age=0, must-revalidate'
+    return response
 
 @app.route('/profiles')
 @app.route('/profiles.html')
