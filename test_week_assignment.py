@@ -108,6 +108,31 @@ class WeeklyMappingTests(unittest.TestCase):
         # Previous week's source rows remain unassigned, never fabricated.
         self.assertEqual(sum(g.get('inferred_week') is None for g in result['players'][0]['games']),7)
 
+    def test_actual_diagnostic_three_team_weeks_twelve_01_nine_cricket(self):
+        # Reproduces live organizer diagnostic: weeks 1, 2, 3 parsed;
+        # individual 01=12, Cricket=9, but only the explicit 12.82
+        # anchor was previously assigned. Source 'game' labels and
+        # individual win flags may differ from the team report.
+        report=player_result(self.matches,[1,2,3])
+        for game in report['players'][0]['games']:
+            game['game']='Individual report type'
+            game['win']=False
+        report=normalize_individual_report(report)
+        result=assign_candidate_weeks(report,self.matches)
+        person=result['players'][0]
+        self.assertEqual(person['assignment_diagnostic']['method'],
+                         'full_attendance_report_order')
+        self.assertEqual(result['matching']['assigned'],21)
+        self.assertEqual(result['matching']['unmatched'],0)
+        self.assertEqual([sum(g.get('inferred_week')==n
+                              for g in person['games']) for n in (1,2,3)],
+                         [7,7,7])
+        w3=[g for g in person['games'] if g['inferred_week']==3]
+        self.assertEqual(sorted(g['inferred_game_number'] for g in w3),
+                         list(range(1,8)))
+        self.assertEqual([g['inferred_game_number'] for g in w3 if g['rate']==12.82],
+                         [7])
+
     def test_ambiguous_week_not_guessed(self):
         identical=[match(i,[0,1,0,1,0,1,0]) for i in (1,2,3)]
         result=assign_candidate_weeks(player_result(identical,[2]),identical)
