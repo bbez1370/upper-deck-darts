@@ -922,100 +922,119 @@ def scoring_header(s):
     return re.sub(r'[^A-Z0-9]','',str(s).upper())
 
 def parse_scoring_report(soup):
-    """Read organizer-supplied achievement counts, never reconstruct throws.
+    """Parse both conventional player tables and LeagueLeader grouped player reports.
 
-    Support both performance tables (Player / PPD / Games / achievements)
-    and achievement-only tables (Player / Low Ton / Hat Trick / ...).
-    Duplicate tables and all-format summary rows must not inflate counts.
+    Grouped Location Stats reports identify players on separate rows and put
+    achievements in Summary: rows, not in a Player column. Prefer summary
+    counts over individual one-game rows to prevent duplicate totals.
     """
     parsed=[]
-    detected_headers=[]
-    category_keys={key:set(labels) for key,labels in SCORING_KEYS.items()}
-    player_headers={'PLAYER','PLAYERNAME','NAME'}
-    team_headers={'TEAM','TEAMNAME'}
-    for table_index,table in enumerate(soup.find_all('table')):
+    headers_found=[]
+    sample_rows=[]
+    aliases={key:set(values) for key,values in SCORING_KEYS.items()}
+    person_keys={'PLAYER','PLAYERNAME','NAME'}
+    team_keys={'TEAM','TEAMNAME'}
+    for table_number,table in enumerate(soup.find_all('table')):
         heading=table.find_previous(['h2','h3','h4','h5'])
         title=heading.get_text(' ',strip=True) if heading else ''
-        section_context=title.lower()
         header=None
-        current_team=''
+        team=''
+        person=''
+        metric='OTHER'
         for tr in table.find_all('tr'):
-            cells=tr.find_all(['td','th'],recursive=False)
-            if not cells:cells=tr.find_all(['td','th'])
-            row=[x.get_text(' ',strip=True) for x in cells]
+            cells=tr.find_all(['td','th'],recursive=False) or tr.find_all(['td','th'])
+            row=[cell.get_text(' ',strip=True) for cell in cells]
             if not row:continue
-            if row[0].strip().lower() in ('team:', 'team') and len(row)>1 and row[1].strip():
-                current_team=row[1].strip()
-            keys=[scoring_header(x) for x in row]
-            categories={label:[i for i,k in enumerate(keys) if k in variants]
-                        for label,variants in category_keys.items()}
-            is_header=bool(set(keys)&player_headers) and any(categories.values())
-            if is_header:
-                header=keys
-                detected_headers.append({'table':table_index,'section':title,
-                                         'columns':row[:50]})
+            if len(sample_rows)<8:sample_rows.append(row[:18])
+            normalized=[scoring_header(x) for x in row]
+            if len(row)>1 and normalized[0]=='TEAM' and normalized[1] not in ('AGAINST','WINS','GAMES','NAME'):
+                team=row[1].strip()
+                person=''
+                continue
+            achievement_columns={k:[i for i,label in enumerate(normalized) if label in names]
+                                 for k,names in aliases.items()}
+            if any(achievement_columns.values()) and (set(normalized)&(person_keys|{'WEEK','GAMES','PPD','MPR','LOWTONS'})):
+                header=normalized
+                metric=('MPR' if 'MPR' in header and 'PPD' not in header else
+                        'PPD' if 'PPD' in header and 'MPR' not in header else 'OTHER')
+                headers_found.append({'table':table_number,'columns':row[:45],'section':title})
                 continue
             if header is None:continue
-            # Dividers and totals do not count as individual players.
-            indices=[i for i,k in enumerate(header) if k in player_headers]
-            if not indices or indices[0]>=len(row):continue
-            player=row[indices[0]].strip()
-            if not player or player.lower() in ('summary:','summary','total','totals',
-                                                 'player','team totals','division totals'):
+            # A team's roster follows its Team: heading; LeagueLeader stores
+            # the player name in a standalone second cell.
+            if len(row)==2 and not row[0].strip() and row[1].strip():
+                person=row[1].strip()
                 continue
-            if player.lower().startswith(('summary:', 'total:', 'division:')):continue
-            team_index=next((i for i,k in enumerate(header) if k in team_headers),None)
-            team=row[team_index].strip() if team_index is not None and team_index<len(row) else current_team
+            player_col=next((i for i,k in enumerate(header) if k in person_keys),None)
+            if player_col is not None:
+                if player_col>=len(row):continue
+                candidate=row[player_col].strip()
+                if not candidate or scoring_header(candidate) in {'PLAYER','TOTAL','TOTALS','SUMMARY','TEAM'}:continue
+                person=candidate
+            elif not person:
+                continue
+            first=scoring_header(row[0])
+            summary=any(scoring_header(cell)=='SUMMARY' for cell in row[:3])
+            if first in {'TOTAL','TOTALS','DIVISIONTOTALS','TEAMTOTALS'}:continue
+            team_col=next((i for i,k in enumerate(header) if k in team_keys),None)
+            effective_team=(row[team_col].strip() if team_col is not None and team_col<len(row)
+                            and row[team_col].strip() else team)
+            if effective_team.lower() in ('team:','team'):effective_team=team
             values={}
-            for category,variants in category_keys.items():
-                indices=[i for i,k in enumerate(header) if k in variants]
-                if not indices:continue
-                observed=[_number(row[i]) for i in indices if i<len(row)]
-                counts=[int(n) for n in observed if n is not None and n>=0 and n==int(n)]
-                if counts:values[category]=sum(counts)
+            for category,names in aliases.items():
+                indices=[i for i,col in enumerate(header) if col in names]
+                amounts=[_number(row[i]) for i in indices if i<len(row)]
+                integers=[int(n) for n in amounts if n is not None and n>=0 and int(n)==n]
+                if integers:values[category]=sum(integers)
             if not values:continue
-            # Do not mix summary totals and per-format detail rows.
-            context=(' '.join([section_context,' '.join(header)])).lower()
-            all_formats=any(t in context for t in ('all games','all formats','combined','overall'))
-            # Distinct 01 / Cricket sections may each supply their own hats.
-            metric='MPR' if 'MPR' in header and 'PPD' not in header else 'PPD' if 'PPD' in header and 'MPR' not in header else 'OTHER'
-            parsed.append({'name':player,'team':team,'metric':metric,'counts':values,
-                           'all_formats':all_formats,'table':table_index})
-    merged={}
+            games_idx=next((i for i,key in enumerate(header) if key=='GAMES'),None)
+            games=_number(row[games_idx]) if games_idx is not None and games_idx<len(row) else None
+            if player_col is None and not summary and games!=1:
+                # Grouped report non-summary subtotal rows are ambiguous.
+                continue
+            parsed.append({'name':person,'team':effective_team,'metric':metric,
+                           'stats':values,'is_summary':summary,
+                           'all_formats':any(word in title.lower() for word in
+                                             ('all games','all formats','combined','overall')),
+                           'table':table_number})
+    grouped={}
     for entry in parsed:
         key=(norm(entry['name']),norm(entry['team']))
-        person=merged.setdefault(key,{'name':entry['name'],'team':entry['team'],
-                                      'entries':[]})
-        person['entries'].append(entry)
+        group=grouped.setdefault(key,{'name':entry['name'],'team':entry['team'],'entries':[]})
+        group['entries'].append(entry)
     players=[]
-    categories_present=set()
-    for player in merged.values():
+    reported=set()
+    for group in grouped.values():
         totals={}
         for category in SCORING_KEYS:
-            entries=[entry for entry in player['entries'] if category in entry['counts']]
-            categories_present.update([category] if entries else [])
-            if not entries:
+            matching=[e for e in group['entries'] if category in e['stats']]
+            if not matching:
                 totals[category]=None
                 continue
-            all_game=[entry for entry in entries if entry['all_formats']]
-            if all_game:entries=all_game
-            # Each metric may have a separate report table. An identical
-            # repeat of a report should not double-count the same data.
-            by_source={}
-            for entry in entries:
-                source=(entry['metric'],entry['table'])
-                by_source[source]=max(by_source.get(source,0),entry['counts'][category])
-            totals[category]=sum(by_source.values())
-        players.append({'name':player['name'],'team':player['team'],
+            reported.add(category)
+            # A cumulative row covers the same underlying games as the
+            # detailed game lines in that metric and table.
+            summaries=[e for e in matching if e['is_summary']]
+            if summaries:matching=summaries
+            all_formats=[e for e in matching if e['all_formats']]
+            if all_formats:matching=all_formats
+            by_section={}
+            for e in matching:
+                key=(e['metric'],e['table'])
+                if e['is_summary']:
+                    by_section[key]=max(by_section.get(key,0),e['stats'][category])
+                else:
+                    by_section[key]=by_section.get(key,0)+e['stats'][category]
+            totals[category]=sum(by_section.values())
+        players.append({'name':group['name'],'team':group['team'],
                         'achievements':totals})
     players.sort(key=lambda p:(p['name'].lower(),p['team'].lower()))
     return {'source':'LeagueLeader scoring achievements report',
-            'report_url':ACHIEVEMENTS_REPORT,
-            'players':players,'player_count':len(players),
-            'table_count':len(detected_headers),
-            'reported_categories':sorted(categories_present),
-            'raw_player_rows':len(parsed),
-            'detected_headers':detected_headers[:20]}
+            'report_url':ACHIEVEMENTS_REPORT,'players':players,
+            'player_count':len(players),'table_count':len(headers_found),
+            'reported_categories':sorted(reported),
+            'raw_player_rows':len(parsed),'detected_headers':headers_found[:10],
+            'sample_rows':sample_rows[:8]}
 
 @app.route('/api/scoring-records')
 def scoring_records():
@@ -1027,7 +1046,9 @@ def scoring_records():
         result=parse_scoring_report(soup)
         if result['table_count']==0 or result['raw_player_rows']==0:
             return jsonify({'error':'Scoring report has no recognizable player achievement tables',
-                            'tables':result['table_count'],'rows':result['raw_player_rows']}),503
+                            'tables':result['table_count'],'rows':result['raw_player_rows'],
+                            'detected_headers':result.get('detected_headers',[]),
+                            'sample_rows':result.get('sample_rows',[])}),503
         achievement_cache.update({'at':now,'payload':result})
         return jsonify(result)
     except Exception as error:
