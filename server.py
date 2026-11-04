@@ -121,7 +121,7 @@ def historical_player_row_audit(rr):
 def get_games(rr):
     """Location report rows are: team, week, timestamp, win%, games, wins, losses, type, against, at."""
     current=None;mode=False;out=[]
-    allowed={'301 D/D','501 D/D','701 O/D','Cricket'}
+    allowed={'301','501','701','cricket'}
     for row in rr:
         header=[str(v).strip().lower() for v in row]
         if header[:3]==['team','week','date']:
@@ -134,7 +134,7 @@ def get_games(rr):
             current=row[0].strip();continue
         if len(row)<10 or not current:continue
         date=row[2].strip();kind=row[7].strip();opponent=row[8].strip()
-        if kind not in allowed or not opponent or not date:continue
+        if canonical_game_format(kind) not in allowed or not opponent or not date:continue
         try:dt=datetime.strptime(date,'%m/%d/%Y %I:%M %p')
         except ValueError:continue
         wins=_number(row[5]); losses=_number(row[6])
