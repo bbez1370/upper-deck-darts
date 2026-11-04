@@ -496,7 +496,7 @@ def assign_candidate_weeks(result, matches):
         p01=[g for g in person['games'] if g['metric']=='PPD']
         cricket=[g for g in person['games'] if g['metric']=='MPR']
         complete_block_alignment=False
-        person['assignment_diagnostic'].update({
+        person.setdefault('assignment_diagnostic',{}).update({
           'dated_team_matches':len(full_slots),
           'player_01_games':len(p01),
           'player_cricket_games':len(cricket),
