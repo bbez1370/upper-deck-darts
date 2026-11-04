@@ -336,6 +336,12 @@ def assign_candidate_weeks(result, matches):
         return [[j for j in range(n) if forward[i][j] and
                  compatible(i,j) and suffix[i+1][j+1]] for i in range(m)]
 
+    def format_is_compatible(game, slot):
+        """Check exact format only if the individual report specifies it."""
+        player_type=canonical_game_format(game.get('game',''))
+        expected=canonical_game_format(slot)
+        return player_type not in ('301','501','701','cricket') or player_type==expected
+
     def game_matches(game, slot):
         """The individual report sometimes calls every 01 leg simply 'X01'
         or omits the format entirely. The dated team report supplies the
@@ -344,11 +350,7 @@ def assign_candidate_weeks(result, matches):
         """
         if game['metric']!=slot['metric'] or game['win']!=slot['win']:
             return False
-        player_type=canonical_game_format(game.get('game',''))
-        slot_type=canonical_game_format(slot['game'])
-        if player_type in ('301','501','701','cricket'):
-            return player_type==slot_type
-        return True
+        return format_is_compatible(game,slot['game'])
 
     for person in result['players']:
         team=norm(person['team'])
@@ -499,8 +501,7 @@ def assign_candidate_weeks(result, matches):
                           cricket[3*i+2],p01[4*i+3]]
                 # Only use the position when each source game format is
                 # compatible with the known league game order.
-                if not all(canonical_game_format(g.get('game','')) in
-                    ('','x01',canonical_game_format(slot['game']))
+                if not all(format_is_compatible(g,slot['game'])
                     for g,slot in zip(personal,slots)):
                     continue
                 for g,slot in zip(personal,slots):
@@ -545,8 +546,7 @@ def assign_candidate_weeks(result, matches):
                               cricket[3*b+2],p01[4*b+3]]
                     expected=['301','cricket','501','cricket',
                               '701','cricket','501']
-                    if all(canonical_game_format(row.get('game','')) in
-                        ('','x01',fmt)
+                    if all(format_is_compatible(row,fmt)
                         for row,fmt in zip(personal,expected)):
                         added=0
                         conflicts=[]
