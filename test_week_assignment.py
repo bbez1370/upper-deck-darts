@@ -61,6 +61,26 @@ class WeeklyMappingTests(unittest.TestCase):
         self.assertEqual([x['week'] for x in result['players'][0]['weekly']],[1,3])
         self.assertEqual(next(g for g in result['players'][0]['games'] if g['rate']==12.82)['inferred_week'],3)
 
+    def test_organizer_anchor_fills_complete_week_three_game_block(self):
+        report=player_result(self.matches,[3])
+        # Simulate missing team-game matches from the live import.
+        # The organizer identified the fourth X01 result (12.82)
+        # as the final 01 game in Week 3.
+        result=assign_candidate_weeks(report,[])
+        games=result['players'][0]['games']
+        self.assertEqual(len(games),7)
+        self.assertTrue(all(g.get('inferred_week')==3 for g in games))
+        self.assertEqual(sorted(g.get('inferred_game_number') for g in games),list(range(1,8)))
+        self.assertEqual(result['matching']['assigned'],7)
+        self.assertEqual(result['matching']['unmatched'],0)
+
+    def test_no_unjustified_full_week_for_other_player(self):
+        report=player_result(self.matches,[3])
+        report['players'][0]['name']='Other Player'
+        result=assign_candidate_weeks(report,[])
+        self.assertEqual(result['matching']['assigned'],0)
+        self.assertEqual(result['matching']['unmatched'],7)
+
     def test_ambiguous_week_not_guessed(self):
         identical=[match(i,[0,1,0,1,0,1,0]) for i in (1,2,3)]
         result=assign_candidate_weeks(player_result(identical,[2]),identical)
