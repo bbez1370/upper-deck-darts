@@ -470,8 +470,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
         ['low_tons','Low Tons'],
         ['high_tons','High Tons'],
         ['ton_80s','Ton 80s (180s)'],
-        ['hats_01','01 Hat Tricks'],
-        ['hats_cricket','Cricket Hat Tricks'],
+        ['hat_tricks','Hat Tricks'],
         ['white_horses','White Horses'],
         ['marks_5','5 Marks'],
         ['marks_6','6 Marks'],
@@ -495,7 +494,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
            String(i+1),'<a href="/profiles?player='+encodeURIComponent(p.name)+'">'+safe(p.name)+'</a>',
            safe(p.team||'—'),String(p.count)
          ]))):'<p class="mini muted">No recorded achievements in this category.</p>')).join('');
-      root.innerHTML='<p class="mini muted">Source: <a href="'+safe(payload.report_url)+'" target="_blank" rel="noopener">LeagueLeader scoring report</a>. These are cumulative current-season achievement counts taken directly from the report, not estimates from individual game scores.</p>'+
+      root.innerHTML='<p class="mini muted">Source: <a href="'+safe(payload.report_url)+'" target="_blank" rel="noopener">LeagueLeader scoring report</a>. Counts come from official LeagueLeader scoring-achievement columns, not estimates from game averages.</p>'+
         '<h3>Scoring achievement totals</h3>'+cards(summary)+
         '<h3>Player achievement leaderboards</h3>'+sections+
         (payload.stale?'<p class="notice">Using the most recent cached LeagueLeader scoring report because a fresh request failed.</p>':'');
