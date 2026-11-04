@@ -321,7 +321,7 @@ function renderWeeklyTrends(){
   '<div class="week-game-table tablebox"><table><thead><tr><th>Game #</th><th>Format</th><th>PPD / MPR</th><th>Result</th></tr></thead><tbody>'+
   [...shownWeek.details].sort((a,b)=>(a.inferred_game_number||99)-(b.inferred_game_number||99)).map(g=>'<tr>'+
   '<td>'+safe(g.inferred_game_number||'—')+'</td>'+
-  '<td>'+safe(g.game||g.metric)+'</td>'+
+  '<td>'+safe(g.inferred_game_format||(['301 D/D','Cricket','501 D/D','Cricket','701 O/D','Cricket','501 D/D'][Number(g.inferred_game_number)-1])||g.game||g.metric)+'</td>'+
   '<td>'+Number(g.rate).toFixed(2)+' '+safe(g.metric)+'</td>'+
   '<td>'+(g.win?'Win':'Loss')+'</td></tr>').join('')+'</tbody></table></div></div>':
   '<div class="week-highlight"><h4>Week '+selectedWeek+'</h4>'+
