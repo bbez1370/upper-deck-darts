@@ -354,24 +354,11 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const topPPD=[...(data.players||[])].filter(p=>!confirmedExcluded(p.name)).sort((a,b)=>b.ppd-a.ppd)[0];
       const topMPR=[...(data.cricket||[])].filter(p=>!confirmedExcluded(p.name)).sort((a,b)=>b.mpr-a.mpr)[0];
       const mostSweeps=teams.map(t=>({team:t,sweeps:sweeps.filter(m=>norm(m.teams[m.wins[0]])===norm(t)).length})).sort((a,b)=>b.sweeps-a.sweeps)[0];
-      html+=pageTitle("Records & Milestones","Current-season verified team records and provisional player averages. Historical all-time records need prior-season imports.");
+      html+=pageTitle("Scoring Records","Current-season scoring achievements from individual LeagueLeader game records. Historical scoring records are not included.");
       html+=cards(metric("Longest match win streak",longest[0]?.best||0,longest[0]?.team||"")+metric("Most 7–0 sweeps",mostSweeps?.sweeps??0,mostSweeps?.team||"")+metric("Top season PPD",topPPD?.ppd??"—",topPPD?.name||"")+metric("Top season MPR",topMPR?.mpr??"—",topMPR?.name||""));
-      html+=`<h3>Verified individual game highs</h3><div id="individualRecords"><p class="muted">Loading individual-game records…</p></div>`;
-      html+=`<h3>Player game milestones</h3>`;
-      const participants=[...(data.players||[])].map(p=>{
-        const c=(data.cricket||[]).find(x=>norm(x.name)===norm(p.name));
-        return {name:p.name,team:p.team,total:Number(p.games||0)+Number(c?.games||0),eligible:!confirmedExcluded(p.name)};
-      }).filter(p=>p.eligible).sort((a,b)=>b.total-a.total).slice(0,12);
-      html+=table(["Player","Team","01 + Cricket games","Next milestone"],participants.map(p=>{
-        const next=[25,50,100,200,300].find(t=>t>p.total)||"300+";
-        return row([safe(p.name),safe(p.team),String(p.total),String(next)]);
-      }));
-      html+=`<p class="mini muted">Game totals combine recorded 01 and Cricket appearances. This shows progress toward milestones, not unverified personal bests.</p>`;
-      html+=`<h3>Season milestones</h3>`;
-      html+=table(["Team","Recorded series","7–0 sweeps","Best streak"],teams.map(t=>row([safe(t),String(matchLog(t).length),String(sweeps.filter(m=>norm(m.teams[m.wins[0]])===norm(t)).length),String(longest.find(x=>norm(x.team)===norm(t))?.best||0)])));
-      html+=`<div class="anote">No 180s, high finishes, or individual game records are claimed without the corresponding player-level game statistics.</div>`;
-      html+=`<h3>Historical league record archive</h3><div id="leagueRecordArchive"><p class="muted">Loading past seasons…</p></div>`;
-    } else if(analyticsPage==="predict"){
+      html+=`<h3>Individual scoring records</h3><div id="individualRecords"><p class="muted">Loading individual-game records…</p></div>`;
+      html+='<p class="mini muted">Scoring achievements are counted from individual LeagueLeader game reports. Categories without source data are marked unavailable, not zero.</p>';
+        } else if(analyticsPage==="predict"){
       const next=schedule.find(w=>w.matches.some(m=>!matchData().some(d=>d.week===w.num&&[...d.teams].map(norm).sort().join("|")===[m.home,m.away].map(norm).sort().join("|"))))||schedule[0];
       const week=Number($a("predWeek")?.value||next.num);
       const w=schedule.find(x=>x.num===week)||next;
@@ -486,14 +473,44 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const eligible=(payload.players||[]).filter(p=>!confirmedExcluded(p.name));
       const bestMetric=type=>eligible.filter(p=>p.summary?.[type]?.games).sort((a,b)=>b.summary[type].best-a.summary[type].best)[0];
       const p=bestMetric("PPD"),m=bestMetric("MPR");
-      const mark=type=>type==="PPD"?p:m;
+      const normalKey=k=>String(k||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+      const achievements=[
+        {label:"Low Tons",aliases:["LT","LOWTON","LOWTONS","100PLUS","100S"]},
+        {label:"Ton 80s (180)",aliases:["180","180S","TON80","TON80S","T80","T80S"]},
+        {label:"Hat Tricks",aliases:["HAT","HATS","HATTRICK","HATTRICKS","HTRICK","HTRICKS"]},
+        {label:"White Horses",aliases:["WH","WHITEHORSE","WHITEHORSES"]},
+        {label:"High Tons",aliases:["HT","HIGHTON","HIGHTONS"]},
+        {label:"6 Marks",aliases:["6M","6MR","6MARK","6MARKS"]},
+        {label:"7 Marks",aliases:["7M","7MR","7MARK","7MARKS"]},
+        {label:"8 Marks",aliases:["8M","8MR","8MARK","8MARKS"]},
+        {label:"9 Marks",aliases:["9M","9MR","9MARK","9MARKS"]}
+      ];
+      const rows=achievements.map(category=>{
+        const aliases=new Set(category.aliases.map(normalKey));
+        const entries=eligible.map(person=>{
+          let count=0;
+          for(const game of person.games||[]){
+            for(const [name,n] of Object.entries(game.achievements||{})){
+              if(aliases.has(normalKey(name)))count+=Number(n)||0;
+            }
+          }
+          return {name:person.name,team:person.team,count};
+        }).filter(entry=>entry.count>0).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name));
+        const total=entries.reduce((n,x)=>n+x.count,0);
+        return {...category,entries,total};
+      });
+      const achievementSummaries=rows.map(c=>statCard(c.label,c.total||"—",c.total?c.entries.length+" players recorded":"Not reported in imported games")).join("");
+      const achievementSections=rows.map(c=>'<h4>'+safe(c.label)+'</h4>'+
+        (c.entries.length?table(["Rank","Player","Team","Recorded"],c.entries.slice(0,12).map((x,i)=>row([
+          String(i+1),'<a href="/profiles?player='+encodeURIComponent(x.name)+'">'+safe(x.name)+'</a>',safe(x.team),String(x.count)
+        ]))):'<p class="mini muted">No recorded '+safe(c.label.toLowerCase())+' in the available individual-game data.</p>')).join("");
       root.innerHTML=cards(
         statCard("Highest single 01 PPD",p?.summary.PPD.best??"—",p?.name||"")+
-        statCard("Highest single Cricket MPR",m?.summary.MPR.best??"—",m?.name||"")+
-        statCard("Individual games parsed",payload.game_count,"From player game breakdown")+
-        statCard("Players with game records",payload.player_count,"Report total")
-      )+'<p class="mini muted">Weeks are inferred only when individual and team results agree. Confirmed substitute exclusions are applied.</p>';
-    }catch(e){if(document.getElementById("individualRecords"))document.getElementById("individualRecords").textContent="Detailed game records unavailable."}
+        statCard("Highest single Cricket MPR",m?.summary.MPR.best??"—",m?.name||"")
+      )+'<h3>Scoring achievement totals</h3>'+cards(achievementSummaries)+
+      '<h3>Player achievement leaderboards</h3>'+achievementSections+
+      '<p class="mini muted">Counts represent current-season achievements explicitly present in imported LeagueLeader individual game rows. A dash means no recorded count in those rows, not a verified career zero. Substitute exclusions are applied.</p>';
+    }catch(e){if(document.getElementById("individualRecords"))document.getElementById("individualRecords").textContent="Detailed scoring achievements unavailable: "+e.message}
   }
   function renderEligibility(){
     const el=$a("aExclusions");if(!el)return;
