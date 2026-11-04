@@ -344,6 +344,17 @@ function renderWeeklyTrends(){
   '<p class="small muted">Current season only. Games are read oldest to newest, then aligned to the dated team results using the seven-game order: 301, Cricket, 501, Cricket, 701, Cricket, 501. Skipped weeks stay skipped; dates are inferred from verified match alignment, not printed in the player report.</p>'+
   (weeklyError?'<p class="season-warning">'+safe(weeklyError)+'</p>':'')+
   '<p class="small muted">'+Number(weeklyData.matching?.full_medley_assigned||0)+' individual game entries across the league matched by complete seven-game sequences.</p>'+ 
+  '<details class="small" style="margin:10px 0"><summary>How were my weeks assigned?</summary>'+
+  '<p>LeagueLeader individual game rows are read oldest first. The importer compares each seven-game sequence with your team\'s dated match results and win/loss order. Exact individual-game format text is optional because the team report defines the 301 / Cricket / 501 / Cricket / 701 / Cricket / 501 order.</p>'+
+  (weeklyData.players||[]).filter(x=>[chosen,...(playerFor(chosen)?.aliases||[])].some(n=>equal(n,x.name))).map(x=>{
+   const d=x.assignment_diagnostic||{};
+   return '<div class="notice"><b>'+safe(x.name)+'</b> · Team '+safe(x.team)+
+    '<p>Scheduled weeks with verified seven-game team results: '+safe((d.team_match_weeks||[]).join(', ')||'None')+
+    ' · Individual 01 games: '+Number(d.player_01_games||0)+
+    ' · Cricket games: '+Number(d.player_cricket_games||0)+
+    ' · Mapped: '+Number(d.assigned||0)+' · Unassigned: '+Number(d.unassigned||0)+'</p>'+
+    '<p>Matching method: '+safe(d.method||'Not available')+'</p></div>';
+  }).join('')+'</details>'+
   '<div class="weekgrid">'+
    '<div class="weekmetric"><span class="small">Weeks represented</span><strong>'+weeks.length+'</strong><span class="small muted">Weeks '+span+'</span></div>'+
    '<div class="weekmetric"><span class="small">Last 3 represented weeks</span><strong>'+sum.wins+'/'+sum.games+'</strong><span class="small muted">Individual game wins</span></div>'+
