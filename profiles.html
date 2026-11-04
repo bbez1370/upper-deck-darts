@@ -283,13 +283,16 @@ function playerWeeklyRecords(name){
    if(!Number.isInteger(g.inferred_week)){ambiguous++;continue}
    inferred++;
    const week=g.inferred_week;
-   if(!byWeek.has(week))byWeek.set(week,{week,date:g.inferred_date,PPD:[],MPR:[],wins:0,games:0});
+   if(!byWeek.has(week))byWeek.set(week,{week,date:g.inferred_date,PPD:[],MPR:[],wins:0,games:0,details:[]});
    const row=byWeek.get(week);
    if(g.metric==='PPD'||g.metric==='MPR')row[g.metric].push(Number(g.rate));
    row.wins+=g.win?1:0;row.games++;
+   row.details.push({...g,source_name:item.name,source_team:item.team});
   }
  }
- return {weeks:[...byWeek.values()].sort((a,b)=>a.week-b.week),inferred,unassigned:ambiguous,total};
+ return {weeks:[...byWeek.values()].sort((a,b)=>a.week-b.week),inferred,unassigned:ambiguous,total,
+  missing:items.flatMap(x=>(x.games||[]).filter(g=>!Number.isInteger(g.inferred_week))
+    .map(g=>({...g,source_name:x.name})))};
 }
 function renderWeeklyTrends(){
  const root=$('weeklyPlayerTrends');
@@ -302,6 +305,26 @@ function renderWeeklyTrends(){
  const r=playerWeeklyRecords(chosen);
  if(!r||r.total===0){root.innerHTML='<h3>2026–27 weekly trends</h3><p class="muted">No current-season individual games found for this player.</p>';return}
  const weeks=r.weeks;
+ const shownWeek=weeks.find(x=>x.week===selectedWeek);
+ const weekSelector='<div class="week-selector"><label for="selectedWeek">View a specific week</label>'+
+  '<select id="selectedWeek" aria-label="Choose week">'+
+  Array.from({length:23},(_,i)=>i+1).map(n=>'<option value="'+n+'"'+(selectedWeek===n?' selected':'')+'>Week '+n+'</option>').join('')+'</select>'+
+  '<span class="small muted">Week 3: Oct 28, 2026</span></div>';
+ const average=arr=>arr.length?(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(2):'—';
+ const weekDetails=shownWeek?'<div class="week-highlight"><h4>Week '+shownWeek.week+' · '+safe(shownWeek.date||'Date not available')+'</h4>'+
+  '<div class="weekgrid">'+
+  '<div class="weekmetric"><span class="small">01 PPD</span><strong>'+average(shownWeek.PPD)+'</strong><span class="small muted">'+shownWeek.PPD.length+' games</span></div>'+
+  '<div class="weekmetric"><span class="small">Cricket MPR</span><strong>'+average(shownWeek.MPR)+'</strong><span class="small muted">'+shownWeek.MPR.length+' games</span></div>'+
+  '<div class="weekmetric"><span class="small">Game wins</span><strong>'+shownWeek.wins+'/'+shownWeek.games+'</strong><span class="small muted">Assigned individual games</span></div></div>'+
+  '<div class="week-game-table tablebox"><table><thead><tr><th>Game #</th><th>Format</th><th>PPD / MPR</th><th>Result</th></tr></thead><tbody>'+
+  [...shownWeek.details].sort((a,b)=>(a.inferred_game_number||99)-(b.inferred_game_number||99)).map(g=>'<tr>'+
+  '<td>'+safe(g.inferred_game_number||'—')+'</td>'+
+  '<td>'+safe(g.game||g.metric)+'</td>'+
+  '<td>'+Number(g.rate).toFixed(2)+' '+safe(g.metric)+'</td>'+
+  '<td>'+(g.win?'Win':'Loss')+'</td></tr>').join('')+'</tbody></table></div></div>':
+  '<div class="week-highlight"><h4>Week '+selectedWeek+'</h4>'+
+  '<p class="muted">No individually verified games have been assigned to this week for this player. This does not mean the player did not play.</p>'+
+  (r.unassigned?'<p class="small">There are '+r.unassigned+' unassigned games. They may include this week; the report does not identify an unambiguous date for them.</p>':'')+'</div>';
  const chart=metric=>{
   const values=weeks.filter(w=>w[metric].length).map(w=>({week:w.week,games:w[metric].length,
       avg:w[metric].reduce((a,b)=>a+b,0)/w[metric].length}));
@@ -323,6 +346,7 @@ function renderWeeklyTrends(){
    '<div class="weekmetric"><span class="small">Weeks represented</span><strong>'+weeks.length+'</strong><span class="small muted">Weeks '+span+'</span></div>'+
    '<div class="weekmetric"><span class="small">Last 3 represented weeks</span><strong>'+sum.wins+'/'+sum.games+'</strong><span class="small muted">Individual game wins</span></div>'+
    '<div class="weekmetric"><span class="small">Games assigned to weeks</span><strong>'+r.inferred+'/'+r.total+'</strong><span class="small muted">'+r.unassigned+' unassigned</span></div></div>'+
+  weekSelector+weekDetails+
   '<div class="weekly-tabs" role="group" aria-label="Weekly scoring metric">'+
   '<button id="weekPPD" class="active" type="button">01 PPD</button><button id="weekMPR" type="button">Cricket MPR</button></div>'+
   '<div id="weekChart">'+chart('PPD')+'</div>'+
@@ -333,6 +357,11 @@ function renderWeeklyTrends(){
    w.PPD.length?(w.PPD.reduce((a,b)=>a+b,0)/w.PPD.length).toFixed(2)+' ('+w.PPD.length+')':'—')+
    '</td><td>'+(w.MPR.length?(w.MPR.reduce((a,b)=>a+b,0)/w.MPR.length).toFixed(2)+' ('+w.MPR.length+')':'—')+
    '</td><td>'+w.wins+'/'+w.games+'</td></tr>').join('')+'</tbody></table></div>';
+ $('selectedWeek').addEventListener('change',ev=>{
+  selectedWeek=Number(ev.target.value);
+  history.replaceState(null,'','?player='+encodeURIComponent(chosen)+'&tab=trends&week='+selectedWeek);
+  renderWeeklyTrends();
+ });
  for(const metric of ['PPD','MPR']){
   const button=$('week'+metric);
   button.addEventListener('click',()=>{
