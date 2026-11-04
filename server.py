@@ -345,7 +345,7 @@ def normalize_individual_report(result):
     return result
 
 
-def assign_normalized_report_weeks(result):
+def assign_normalized_report_weeks(result, matches=None):
     """Use *only* defensible complete-chronology or organizer evidence.
 
     A player with a complete block for EVERY scheduled elapsed week can be
@@ -355,13 +355,19 @@ def assign_normalized_report_weeks(result):
     assign the final 4+3 source rows when Week 3 is still the latest
     scheduled played week and the 12.82 score is uniquely last in 01.
     """
-    today=datetime.now().date()
-    elapsed=sorted((w for w in SCHEDULE
-        if datetime.strptime(w['date'],'%m/%d/%Y').date()<=today
-        and not any(m['home'].startswith('Rank ') for m in w['matches'])),
-        key=lambda w:int(w['num']))
-    known={int(w['num']):w['date'] for w in elapsed}
+    # Only a recorded, completed team match establishes a played week.
+    # Server UTC date may already be Thursday while Wednesday evening
+    # results have not happened; never use calendar elapsed weeks.
+    matches=matches or []
+    completed={int(m['week']) for m in matches if m.get('sequence_valid')}
+    calendar={int(w['num']):w for w in SCHEDULE}
     for person in result['players']:
+        team=norm(person['team'])
+        played=sorted({int(m['week']) for m in matches
+            if m.get('sequence_valid') and
+            team in (norm(m['teams'][0]),norm(m['teams'][1]))})
+        elapsed=[calendar[week] for week in played if week in calendar]
+        known={int(w['num']):w['date'] for w in elapsed}
         ppd=[g for g in person['games'] if g['metric']=='PPD']
         mpr=[g for g in person['games'] if g['metric']=='MPR']
         full=person.get('normalized_blocks',[])
@@ -902,15 +908,16 @@ def individual_game_stats():
         result=normalize_individual_report(get_individual_games(rows(soup)))
         # Transform the source report into inspectable ordered blocks FIRST.
         # Only then perform team schedule alignment.
-        result=assign_normalized_report_weeks(result)
         try:
             official=refresh()
+            result=assign_normalized_report_weeks(result,official['matches'])
             result=assign_candidate_weeks(result,official['matches'])
             result['team_match_source_status']='available'
         except Exception as match_error:
             # The preprocessing output is still usable where the complete
             # match chronology or an organizer-confirmed result establishes
             # a week without relying on the separate team-match API.
+            result=assign_normalized_report_weeks(result,[])
             result=assign_candidate_weeks(result,[])
             result['team_match_source_status']='unavailable'
             result['team_match_source_error']=str(match_error)[:140]
