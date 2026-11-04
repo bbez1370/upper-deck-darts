@@ -407,7 +407,8 @@ function renderAccount(){
  '<label class="formfield" for="pdouble">Favorite double</label><input id="pdouble" maxlength="60" value="'+safe(myProfile?.favorite_double||'')+'">'+
  '<label class="formfield" for="pdarts">Darts setup</label><input id="pdarts" maxlength="120" value="'+safe(myProfile?.darts_setup||'')+'">'+
  '<label class="formfield" for="pimage">Your player photo (JPG, PNG or WebP, max 2 MB)</label><img id="photoPreview" class="avatar" alt="Your selected profile photo" hidden style="margin:9px 0 12px"><input type="file" id="pimage" accept="image/jpeg,image/png,image/webp">'+
- '<p class="small muted">Your photo appears above your stats once you save it and your player claim is approved. Only upload a picture you want the league to see.</p><button type="submit" class="btn primary" id="saveBtn">Save photo & profile</button></form><hr>'+
+ (myProfile?.avatar_path?'<p><button type="button" id="removePhoto" class="btn">Remove my photo</button></p>':'')+
+ '<p class="small muted">Only you can upload, replace or remove your photo. Officers can approve your player identity, but cannot edit your photo. Your photo becomes visible with an approved player claim.</p><button type="submit" class="btn primary" id="saveBtn">Save photo & profile</button></form><hr>'+
  '<h3>Link my statistics</h3><p class="small muted">Select your exact LeagueLeader name. A moderator approves the match before your profile appears on those career records.</p>'+
  (claim?'<p class="tag">Claim: '+safe(claim.player_name)+' · '+safe(claim.status)+'</p>':
  '<form id="claimForm"><select id="claimName" required><option value="">Choose your LeagueLeader player name</option>'+
@@ -415,6 +416,7 @@ function renderAccount(){
  '<p id="accountStatus" class="small" role="status"></p>';
  $('editForm').addEventListener('submit',saveProfile);
  $('pimage').addEventListener('change',renderPhotoPreview);renderPhotoPreview();
+ $('removePhoto')?.addEventListener('click',removeOwnPhoto);
  $('claimForm')?.addEventListener('submit',submitClaim);
 }
 async function saveProfile(ev){
@@ -435,9 +437,34 @@ async function saveProfile(ev){
   const {error}=await client.from('league_member_profiles').upsert(record,{onConflict:'user_id'});
   if(error)throw error;
   myProfile=record;profiles=profiles.filter(p=>p.user_id!==user.id).concat(record);
-  $('accountStatus').textContent='Saved! Your profile updates will show on an approved player profile.';renderPlayer();renderNames();
+  renderAccount();renderPlayer();renderNames();$('accountStatus').textContent='Saved! Your profile updates will show on an approved player profile.';
  }catch(e){$('accountStatus').textContent='Could not save: '+e.message}
  finally{btn.disabled=false}
+}
+async function removeOwnPhoto(){
+ if(!user||!myProfile?.avatar_path)return;
+ if(!confirm('Remove your photo from your public player profile?'))return;
+ const button=$('removePhoto');button.disabled=true;
+ $('accountStatus').textContent='Removing photo…';
+ const old=myProfile.avatar_path;
+ try{
+  const {error}=await client.from('league_member_profiles')
+   .update({avatar_path:null,updated_at:new Date().toISOString()})
+   .eq('user_id',user.id);
+  if(error)throw error;
+  myProfile={...myProfile,avatar_path:null};
+  profiles=profiles.map(p=>p.user_id===user.id?{...p,avatar_path:null}:p);
+  // Removing the public reference happens first to avoid a broken image
+  // if the storage file deletion is delayed or fails.
+  const {error:removeError}=await client.storage.from('league-avatars').remove([old]);
+  renderAccount();renderPlayer();renderNames();
+  $('accountStatus').textContent=removeError?
+   'Photo removed from your profile. Old stored file cleanup could not be completed.':
+   'Your profile photo was removed.';
+ }catch(e){
+  $('accountStatus').textContent='Could not remove your photo: '+e.message;
+  button.disabled=false;
+ }
 }
 async function submitClaim(e){
  e.preventDefault();const name=$('claimName').value;
