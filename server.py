@@ -482,14 +482,53 @@ def assign_candidate_weeks(result, matches):
                     else:
                         unmatched+=1
 
-        # The league organizer directly confirmed Joe Banker's 12.82
-        # 01 game occurred in the final 01 position of Week 3 on
-        # October 28, 2026. This is a one-row, evidence-based override,
-        # not an inferred result for any other game or player.
+        # A report contains four 01 games and three Cricket games per
+        # played team match. When the number of COMPLETE personal blocks
+        # equals the number of validated, dated team matches, every
+        # week is accounted for and block chronology uniquely establishes
+        # the week even if individual W/L labels differ between reports.
+        # Never use this fallback when a player skipped a team match.
+        blocks_count=(len(p01)//4 if p01 and len(p01)%4==0 and
+            cricket and len(cricket)%3==0 and
+            len(p01)//4==len(cricket)//3 else 0)
+        if not complete_block_alignment and blocks_count and blocks_count==len(full_slots):
+            mapped=0
+            for i,slots in enumerate(full_slots):
+                personal=[p01[4*i],cricket[3*i],p01[4*i+1],
+                          cricket[3*i+1],p01[4*i+2],
+                          cricket[3*i+2],p01[4*i+3]]
+                # Only use the position when each source game format is
+                # compatible with the known league game order.
+                if not all(canonical_game_format(g.get('game','')) in
+                    ('','x01',canonical_game_format(slot['game']))
+                    for g,slot in zip(personal,slots)):
+                    continue
+                for g,slot in zip(personal,slots):
+                    if g.get('inferred_week') not in (None,slot['week']):
+                        person['assignment_diagnostic'].setdefault(
+                            'chronology_conflicts',[]).append({
+                                'existing':g['inferred_week'],
+                                'ordered_week':slot['week']})
+                        continue
+                    if g.get('inferred_week') is None:
+                        g['inferred_week']=slot['week']
+                        g['inferred_date']=slot['date']
+                        g['inferred_game_number']=slot['game_number']
+                        g['week_confidence']='complete_attendance_chronology'
+                        mapped+=1
+            person['assignment_diagnostic']['chronology_assigned']=mapped
+
+        # Organizer-confirmed anchor: Joe Banker's 12.82 01 game was
+        # game seven on October 28, 2026 (Week 3). Four sequential
+        # 01 rows and three sequential Cricket rows constitute a match,
+        # but this is usable only when the anchor falls in the fourth
+        # 01 position of a complete block. Never apply this to other
+        # players or unconfirmed scores.
         if norm(person['name'])=='joebanker':
-            confirmed=[g for g in p01 if abs(float(g['rate'])-12.82)<0.005]
+            confirmed=[(i,g) for i,g in enumerate(p01)
+                       if abs(float(g['rate'])-12.82)<0.005]
             if len(confirmed)==1:
-                g=confirmed[0]
+                anchor_i,g=confirmed[0]
                 if g.get('inferred_week') not in (None,3):
                     person['assignment_diagnostic']['organizer_override_conflict']=g['inferred_week']
                 if g.get('inferred_week') is None:
@@ -497,16 +536,47 @@ def assign_candidate_weeks(result, matches):
                     g['inferred_date']='10/28/2026'
                     g['inferred_game_number']=7
                     g['week_confidence']='organizer_confirmed'
-                    matched+=1
-                    person['assignment_diagnostic']['organizer_confirmed_games']=1
-                    # Correct accounting: this was previously unassigned.
-                    if g.get('candidate_weeks'):
-                        ambiguous=max(0,ambiguous-1)
+                if (anchor_i%4==3 and
+                    len(p01)>=4*(anchor_i//4+1) and
+                    len(cricket)>=3*(anchor_i//4+1)):
+                    b=anchor_i//4
+                    personal=[p01[4*b],cricket[3*b],p01[4*b+1],
+                              cricket[3*b+1],p01[4*b+2],
+                              cricket[3*b+2],p01[4*b+3]]
+                    expected=['301','cricket','501','cricket',
+                              '701','cricket','501']
+                    if all(canonical_game_format(row.get('game','')) in
+                        ('','x01',fmt)
+                        for row,fmt in zip(personal,expected)):
+                        added=0
+                        conflicts=[]
+                        for number,row in enumerate(personal,1):
+                            if row.get('inferred_week') not in (None,3):
+                                conflicts.append({'game':number,
+                                                  'assigned':row['inferred_week']})
+                                continue
+                            if row.get('inferred_week') is None:added+=1
+                            row['inferred_week']=3
+                            row['inferred_date']='10/28/2026'
+                            row['inferred_game_number']=number
+                            row['week_confidence']='organizer_confirmed_block'
+                        person['assignment_diagnostic']['week_3_block_companions_assigned']=added
+                        if conflicts:
+                            person['assignment_diagnostic']['week_3_block_conflicts']=conflicts
                     else:
-                        unmatched=max(0,unmatched-1)
+                        person['assignment_diagnostic']['week_3_block_status']='format conflict'
+                else:
+                    person['assignment_diagnostic']['week_3_block_status']=(
+                        'not a complete four-01 / three-Cricket block')
             else:
                 person['assignment_diagnostic']['organizer_override_status']=(
-                  '12.82 score not uniquely present; no override applied')
+                    '12.82 score not uniquely present; no override applied')
+        # Recompute counts from actual assignments after every pass;
+        # diagnostics must agree with the rows returned to the frontend.
+        person['assignment_diagnostic']['assigned_final']=sum(
+            g.get('inferred_week') is not None for g in person['games'])
+        person['assignment_diagnostic']['unassigned_final']=sum(
+            g.get('inferred_week') is None for g in person['games'])
         byweek={}
         for g in person['games']:
             week=g.get('inferred_week')
@@ -526,8 +596,12 @@ def assign_candidate_weeks(result, matches):
             'MPR':{'games':len(v['MPR']),
                    'average':round(sum(v['MPR'])/len(v['MPR']),2)} if v['MPR'] else None}
             for v in sorted(byweek.values(),key=lambda x:x['week'])]
-    result['matching']={'assigned':matched,'ambiguous':ambiguous,
-       'unmatched':unmatched,'full_medley_assigned':full_medley_assigned,
+    assigned_final=sum(g.get('inferred_week') is not None
+        for person in result['players'] for g in person['games'])
+    total_games=sum(len(person['games']) for person in result['players'])
+    result['matching']={'assigned':assigned_final,'ambiguous':ambiguous,
+       'unmatched':total_games-assigned_final,
+       'full_medley_assigned':full_medley_assigned,
        'method':'Player game lists oldest-to-newest; match complete 301/Cricket/501/Cricket/701/Cricket/501 medleys to dated team results including win/loss and skipped weeks, then order-preserving partial-game fallback',
        'game_order':list(GAME_ORDER),
        'validated_matches':sum(bool(m.get('sequence_valid')) for m in matches),
