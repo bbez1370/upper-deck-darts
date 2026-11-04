@@ -88,7 +88,7 @@ class WeeklyMappingTests(unittest.TestCase):
         calendar=[{'num':i,'date':DATES[i],'matches':[{'home':'Conway Banker','away':'Opponent'}]} for i in (1,2,3)]
         with patch('server.SCHEDULE',calendar):
             result=normalize_individual_report(report)
-            result=assign_normalized_report_weeks(result)
+            result=assign_normalized_report_weeks(result,self.matches)
         self.assertEqual(len(result['players'][0]['normalized_blocks']),3)
         self.assertEqual(result['players'][0]['normalization']['unpaired_01_rows'],0)
         self.assertEqual(result['players'][0]['normalization']['unpaired_cricket_rows'],0)
@@ -100,7 +100,7 @@ class WeeklyMappingTests(unittest.TestCase):
         report=player_result(self.matches,[2,3])
         calendar=[{'num':i,'date':DATES[i],'matches':[{'home':'Conway Banker','away':'Opponent'}]} for i in (1,2,3)]
         with patch('server.SCHEDULE',calendar):
-            result=assign_normalized_report_weeks(normalize_individual_report(report))
+            result=assign_normalized_report_weeks(normalize_individual_report(report),self.matches)
         week3=[g for g in result['players'][0]['games'] if g.get('inferred_week')==3]
         self.assertEqual(len(week3),7)
         self.assertEqual(sorted(g['inferred_game_number'] for g in week3),list(range(1,8)))
