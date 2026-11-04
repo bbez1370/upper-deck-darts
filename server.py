@@ -482,6 +482,31 @@ def assign_candidate_weeks(result, matches):
                     else:
                         unmatched+=1
 
+        # The league organizer directly confirmed Joe Banker's 12.82
+        # 01 game occurred in the final 01 position of Week 3 on
+        # October 28, 2026. This is a one-row, evidence-based override,
+        # not an inferred result for any other game or player.
+        if norm(person['name'])=='joebanker':
+            confirmed=[g for g in p01 if abs(float(g['rate'])-12.82)<0.005]
+            if len(confirmed)==1:
+                g=confirmed[0]
+                if g.get('inferred_week') not in (None,3):
+                    person['assignment_diagnostic']['organizer_override_conflict']=g['inferred_week']
+                if g.get('inferred_week') is None:
+                    g['inferred_week']=3
+                    g['inferred_date']='10/28/2026'
+                    g['inferred_game_number']=7
+                    g['week_confidence']='organizer_confirmed'
+                    matched+=1
+                    person['assignment_diagnostic']['organizer_confirmed_games']=1
+                    # Correct accounting: this was previously unassigned.
+                    if g.get('candidate_weeks'):
+                        ambiguous=max(0,ambiguous-1)
+                    else:
+                        unmatched=max(0,unmatched-1)
+            else:
+                person['assignment_diagnostic']['organizer_override_status']=(
+                  '12.82 score not uniquely present; no override applied')
         byweek={}
         for g in person['games']:
             week=g.get('inferred_week')
