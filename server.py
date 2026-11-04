@@ -499,9 +499,50 @@ def assign_candidate_weeks(result, matches):
           'method':'awaiting alignment'
         })
 
+        # When ALL three reported team matches have a corresponding
+        # complete seven-game player block, source chronology alone
+        # establishes both the week and game position. The individual
+        # 'game' field is not an authoritative 301/501/701 format label:
+        # those formats come from the dated team report's fixed medley.
+        # This also avoids requiring the individual-result win flag to
+        # equal the *team* win for a doubles game.
+        if (full_slots and len(p01)==4*len(full_slots)
+                and len(cricket)==3*len(full_slots)):
+            possible_conflicts=[]
+            for i,slots in enumerate(full_slots):
+                merged=[p01[4*i],cricket[3*i],p01[4*i+1],
+                        cricket[3*i+1],p01[4*i+2],
+                        cricket[3*i+2],p01[4*i+3]]
+                for g,slot in zip(merged,slots):
+                    if g.get('inferred_week') not in (None,slot['week']):
+                        possible_conflicts.append({
+                            'source_rate':g['rate'],
+                            'preassigned_week':g['inferred_week'],
+                            'chronological_week':slot['week']})
+            if not possible_conflicts:
+                complete_block_alignment=True
+                person['assignment_diagnostic']['method']='full_attendance_report_order'
+                person['assignment_diagnostic']['chronological_full_matches']=len(full_slots)
+                for i,slots in enumerate(full_slots):
+                    merged=[p01[4*i],cricket[3*i],p01[4*i+1],
+                            cricket[3*i+1],p01[4*i+2],
+                            cricket[3*i+2],p01[4*i+3]]
+                    for g,slot in zip(merged,slots):
+                        if g.get('inferred_week') is None:matched+=1
+                        g['inferred_week']=slot['week']
+                        g['inferred_date']=slot['date']
+                        g['inferred_game_number']=slot['game_number']
+                        g['inferred_game_format']=slot['game']
+                        g['inferred_decider']=slot['is_deciding_game']
+                        g['week_confidence']='full_attendance_source_chronology'
+                full_medley_assigned+=7*len(full_slots)
+            else:
+                person['assignment_diagnostic']['chronology_conflicts']=possible_conflicts
+        # Otherwise attempt unique order-preserving alignments when
+        # some weekly player results are missing.
         # Most doubles players have a 4 x 01 + 3 x Cricket sequence
         # per played match. Match *both* sections together to constrain weeks.
-        if (p01 and cricket and len(p01)%4==0 and len(cricket)%3==0
+        if not complete_block_alignment and (p01 and cricket and len(p01)%4==0 and len(cricket)%3==0
                 and len(p01)//4==len(cricket)//3
                 and len(p01)//4<=len(full_slots)):
             count=len(p01)//4
