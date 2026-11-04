@@ -337,10 +337,18 @@ def assign_candidate_weeks(result, matches):
                  compatible(i,j) and suffix[i+1][j+1]] for i in range(m)]
 
     def game_matches(game, slot):
-        game_type=canonical_game_format(game.get('game',''))
+        """The individual report sometimes calls every 01 leg simply 'X01'
+        or omits the format entirely. The dated team report supplies the
+        authoritative 301/501/701 order. Require a format match only when
+        the individual row explicitly identifies a specific game type.
+        """
+        if game['metric']!=slot['metric'] or game['win']!=slot['win']:
+            return False
+        player_type=canonical_game_format(game.get('game',''))
         slot_type=canonical_game_format(slot['game'])
-        return (game['metric']==slot['metric'] and
-                game['win']==slot['win'] and game_type==slot_type)
+        if player_type in ('301','501','701','cricket'):
+            return player_type==slot_type
+        return True
 
     for person in result['players']:
         team=norm(person['team'])
@@ -366,6 +374,14 @@ def assign_candidate_weeks(result, matches):
         p01=[g for g in person['games'] if g['metric']=='PPD']
         cricket=[g for g in person['games'] if g['metric']=='MPR']
         complete_block_alignment=False
+        person['assignment_diagnostic']={
+          'dated_team_matches':len(full_slots),
+          'player_01_games':len(p01),
+          'player_cricket_games':len(cricket),
+          'team_match_weeks':[x[0]['week'] for x in full_slots],
+          'game_format_labels':sorted(set(str(g.get('game','')) for g in person['games']))[:20],
+          'method':'awaiting alignment'
+        }
 
         # Most doubles players have a 4 x 01 + 3 x Cricket sequence
         # per played match. Match *both* sections together to constrain weeks.
@@ -384,6 +400,7 @@ def assign_candidate_weeks(result, matches):
             options=uniquely_align(blocks,full_slots,block_compatible)
             if options is not None:
                 complete_block_alignment=True
+                person['assignment_diagnostic']['method']='complete_seven_game_match'
                 for i,possibilities in enumerate(options):
                     weeks={full_slots[j][0]['week'] for j in possibilities}
                     if len(weeks)!=1:
@@ -403,6 +420,11 @@ def assign_candidate_weeks(result, matches):
                         full_medley_assigned+=1
 
         if not complete_block_alignment:
+            person['assignment_diagnostic']['method']='partial_ordered_alignment'
+            person['assignment_diagnostic']['complete_blocks_possible']=(
+              bool(p01) and bool(cricket) and len(p01)%4==0 and
+              len(cricket)%3==0 and len(p01)//4==len(cricket)//3 and
+              len(p01)//4<=len(full_slots))
             # Incomplete weeks, player absences or missing report rows:
             # align the two metric sequences independently, retaining
             # ambiguous games as unassigned rather than guessing dates.
@@ -467,6 +489,12 @@ def assign_candidate_weeks(result, matches):
             item=byweek.setdefault(str(week),{'week':week,
                 'date':schedule_dates.get(week),'PPD':[],'MPR':[]})
             item[g['metric']].append(g['rate'])
+        person['assignment_diagnostic'].update(
+            assigned=sum(bool(g.get('inferred_week')) for g in person['games']),
+            unassigned=sum(not bool(g.get('inferred_week')) for g in person['games']),
+            found_full_match_order=bool(full_slots),
+            latest_01_result=p01[-1]['rate'] if p01 else None,
+            latest_01_week=p01[-1].get('inferred_week') if p01 else None)
         person['weekly']=[{'week':v['week'],'date':v['date'],
             'PPD':{'games':len(v['PPD']),
                    'average':round(sum(v['PPD'])/len(v['PPD']),2)} if v['PPD'] else None,
