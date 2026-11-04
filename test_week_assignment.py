@@ -37,6 +37,24 @@ class WeeklyMappingTests(unittest.TestCase):
         self.assertEqual(next(g for g in games if g['rate']==12.82)['inferred_week'],3)
         self.assertEqual(next(g for g in games if g['rate']==12.82)['inferred_date'],DATES[3])
 
+    def test_generic_x01_and_cricket_labels_use_team_format_order(self):
+        report=player_result(self.matches,[1,2,3])
+        for game in report['players'][0]['games']:
+            game['game']='X01' if game['metric']=='PPD' else 'Cricket'
+        result=assign_candidate_weeks(report,self.matches)
+        self.assertEqual(result['matching']['full_medley_assigned'],21)
+        joe=next(x for x in result['players'][0]['games'] if x['rate']==12.82)
+        self.assertEqual(joe['inferred_week'],3)
+        self.assertEqual(joe['inferred_game_number'],7)
+
+    def test_missing_individual_game_format_label(self):
+        report=player_result(self.matches,[1,3])
+        for game in report['players'][0]['games']:
+            game['game']=''
+        result=assign_candidate_weeks(report,self.matches)
+        self.assertEqual(result['matching']['full_medley_assigned'],14)
+        self.assertEqual([r['week'] for r in result['players'][0]['weekly']],[1,3])
+
     def test_skipped_week_does_not_shift_calendar_assignment(self):
         result=assign_candidate_weeks(player_result(self.matches,[1,3]),self.matches)
         self.assertEqual(result['matching']['full_medley_assigned'],14)
