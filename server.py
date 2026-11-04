@@ -490,14 +490,14 @@ def assign_candidate_weeks(result, matches):
         p01=[g for g in person['games'] if g['metric']=='PPD']
         cricket=[g for g in person['games'] if g['metric']=='MPR']
         complete_block_alignment=False
-        person['assignment_diagnostic']={
+        person['assignment_diagnostic'].update({
           'dated_team_matches':len(full_slots),
           'player_01_games':len(p01),
           'player_cricket_games':len(cricket),
           'team_match_weeks':[x[0]['week'] for x in full_slots],
           'game_format_labels':sorted(set(str(g.get('game','')) for g in person['games']))[:20],
           'method':'awaiting alignment'
-        }
+        })
 
         # Most doubles players have a 4 x 01 + 3 x Cricket sequence
         # per played match. Match *both* sections together to constrain weeks.
@@ -527,6 +527,11 @@ def assign_candidate_weeks(result, matches):
                     j=possibilities[0]
                     slots=full_slots[j]
                     for game,slot in zip(blocks[i],slots):
+                        if game.get('inferred_week') not in (None,slot['week']):
+                            person['assignment_diagnostic'].setdefault(
+                                'preprocessing_match_conflicts',[]).append(
+                                {'already':game['inferred_week'],'team_week':slot['week']})
+                            continue
                         game['inferred_week']=slot['week']
                         game['inferred_date']=slot['date']
                         game['inferred_game_number']=slot['game_number']
@@ -582,6 +587,11 @@ def assign_candidate_weeks(result, matches):
                     weeks={slot['week'] for slot in poss}
                     if len(weeks)==1:
                         slot=poss[0]
+                        if game.get('inferred_week') not in (None,slot['week']):
+                            person['assignment_diagnostic'].setdefault(
+                                'preprocessing_match_conflicts',[]).append(
+                                {'already':game['inferred_week'],'team_week':slot['week']})
+                            continue
                         game['inferred_week']=slot['week']
                         game['inferred_date']=slot['date']
                         numbers={x['game_number'] for x in poss}
@@ -852,8 +862,17 @@ def individual_game_stats():
         # Transform the source report into inspectable ordered blocks FIRST.
         # Only then perform team schedule alignment.
         result=assign_normalized_report_weeks(result)
-        official=refresh()
-        result=assign_candidate_weeks(result,official['matches'])
+        try:
+            official=refresh()
+            result=assign_candidate_weeks(result,official['matches'])
+            result['team_match_source_status']='available'
+        except Exception as match_error:
+            # The preprocessing output is still usable where the complete
+            # match chronology or an organizer-confirmed result establishes
+            # a week without relying on the separate team-match API.
+            result=assign_candidate_weeks(result,[])
+            result['team_match_source_status']='unavailable'
+            result['team_match_source_error']=str(match_error)[:140]
         joe=next((p for p in result['players'] if norm(p['name'])=='joebanker'),None)
         if joe:
             # Organizer-confirmed regression example from October 28, 2026.
