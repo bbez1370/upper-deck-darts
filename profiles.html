@@ -12,7 +12,7 @@ img[hidden]{display:none!important}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script></head>
 <body><header><div><a href="/">← Back to Upper Deck</a><p class="eyebrow">2021 to present · League history</p><h1>Official Player Records</h1><p class="muted">Upper Deck's official player history from the inaugural 2021–22 season through today.</p></div></header>
 <main><p id="status" class="notice" role="status" aria-live="polite">Loading player records…</p>
-<div class="layout"><aside><div class="panel"><h2>Find a player</h2><input id="search" aria-label="Search players" placeholder="Search player names"><p id="count" class="muted small"></p><div id="names" class="list"></div></div><div class="panel"><h2>Your profile</h2><div id="account"></div></div></aside>
+<div class="layout"><aside><div class="panel" id="my-account"><h2>Your profile</h2><div id="account"></div></div><div class="panel"><h2>Find a player</h2><input id="search" aria-label="Search players" placeholder="Search player names"><p id="count" class="muted small"></p><div id="names" class="list"></div></div></aside>
 <div><article id="view" class="panel"><p class="muted">Choose a player to see their career.</p></article><article class="panel"><h2>Official season archive</h2><div id="coverage" class="muted">Checking reports…</div></article><article class="panel" id="officialLeaderboard"><h2>🏆 Official career leaderboards</h2><p class="muted small">Career PPD and MPR use the Upper Deck approved game-weighted method, with a minimum of 20 recorded games for each ranking. Original season statistics remain available in player profiles.</p><div id="officialRankings">Loading official rankings…</div></article><article class="panel" id="cleanupPanel" hidden><h2>Officer: Clean up player history</h2><p class="muted small">Merge an alternate report name into the player who should keep the career record, or hide a player from the career directory. Original LeagueLeader data is never deleted. All edits can be undone.</p><p id="cleanupMessage" class="notice" role="status">No cleanup edits yet.</p>
 <form id="cleanupForm">
 <label class="formfield" for="cleanupSource">Record to merge or hide</label><select id="cleanupSource" required></select>
@@ -32,7 +32,12 @@ const equal=(a,b)=>String(a||'').trim().toLocaleLowerCase()===String(b||'').trim
 const client=window.supabase?.createClient(BASE,KEY);
 let career=null,rawPlayers=[],cleanup=[],resolutions=[],profiles=[],claims=[],user=null,officer=false,chosen='',myProfile=null;
 let weeklyData=null,weeklyError='',weeklyLoading=false;
-let playerTab='overview',selectedWeek=3;
+let playerTab='overview',selectedWeek=3,recovering=false,authBusy=false;
+function ownPlayerName(){
+ const claim=claims.find(c=>c.user_id===user?.id&&c.status==='approved');
+ if(!claim)return '';
+ return (career?.players||[]).find(p=>equal(p.name,claim.player_name)||(p.aliases||[]).some(n=>equal(n,claim.player_name)))?.name||'';
+}
 function prepareCleanedPlayers(){
  const raw=rawPlayers.map(p=>({...p,seasons:(p.seasons||[]).map(x=>({...x}))}));
  const rules=new Map(cleanup.map(x=>[String(x.source_name).trim().toLowerCase(),x]));
@@ -111,7 +116,7 @@ function playerFor(name){return (career?.players||[]).find(p=>equal(p.name,name)
 function approvedFor(name){return claims.find(c=>c.status==='approved'&&equal(c.player_name,name))}
 function profileFor(name){const approved=approvedFor(name);return approved?profiles.find(p=>p.user_id===approved.user_id):null}
 function avatar(p,name){return p?.avatar_path?'<img class="avatar" alt="Profile photo for '+safe(name)+'" src="'+safe(photo(p.avatar_path))+'">':'<div class="avatar placeholder" aria-label="No profile photo">'+safe(head(name))+'</div>'}
-async function load(){
+async function load(preferOwn=false){
  if(!client){info('Profile connection library unavailable. Reload the page.',true);return}
  try{
   const [{data:u},archive,pres,clm,clean,decisions]=await Promise.all([client.auth.getUser(),fetch('/api/careers').then(r=>r.json()),client.from('league_member_profiles').select('*'),client.from('league_player_claims').select('*'),client.from('league_player_cleanup').select('*'),client.from('league_career_overlap_resolutions').select('*')]);
@@ -129,7 +134,8 @@ async function load(){
   if(['overview','current','history','trends'].includes(tab))playerTab=tab;
   const week=Number(url.searchParams.get('week'));
   if(Number.isInteger(week)&&week>=1&&week<=30)selectedWeek=week;
-  chosen=playerFor(requested)?.name||career.players?.[0]?.name||'';
+  chosen=(preferOwn?ownPlayerName():playerFor(requested)?.name)||ownPlayerName()||career.players?.[0]?.name||'';
+  if(preferOwn&&ownPlayerName()){url.searchParams.set('player',chosen);url.searchParams.delete('tab');playerTab='overview';history.replaceState(null,'',url.pathname+url.search+url.hash)}
   renderPlayer();
   loadWeeklyData();
   const parsed=career.reports.filter(x=>x.status==='parsed').length;
@@ -399,7 +405,8 @@ function renderWeeklyTrends(){
  }
 }
 function renderAccount(){
- if(!user){$('account').innerHTML='<p class="muted small">Sign in through Community to customize your photo, nickname and bio.</p><a class="btn primary" href="/#community">Go to Community sign-in</a>';return}
+ if(recovering&&user){$('account').innerHTML='<h3>Choose a new password</h3><form id="profileRecovery"><label class="formfield" for="newPassword">New password</label><input id="newPassword" type="password" required minlength="8" autocomplete="new-password"><button class="btn primary" type="submit">Save new password</button></form><p id="profileAuthStatus" class="small" role="status" aria-live="polite"></p>';return}
+ if(!user){$('account').innerHTML='<p class="muted small">Sign in here to manage your photo, nickname and bio. Everyone can browse player stats.</p><form id="profileSignIn"><label class="formfield" for="profileEmail">Email</label><input id="profileEmail" name="email" type="email" required autocomplete="email"><label class="formfield" for="profilePassword">Password</label><input id="profilePassword" name="password" type="password" required autocomplete="current-password"><p><button class="btn primary" type="submit">Sign in</button></p></form><div class="row"><a class="btn" href="/register">Create account</a><button class="btn" type="button" id="profileReset">Reset password</button></div><p id="profileAuthStatus" class="small" role="status" aria-live="polite"></p>';return}
  const claim=claims.find(c=>c.user_id===user.id);
  const approved=claim?.status==='approved';
  $('account').innerHTML='<p class="small muted">Signed in</p><p>'+safe(user.email)+'</p>'+
@@ -416,7 +423,7 @@ function renderAccount(){
  (claim?'<p class="tag">Claim: '+safe(claim.player_name)+' · '+safe(claim.status)+'</p>':
  '<form id="claimForm"><select id="claimName" required><option value="">Choose your LeagueLeader player name</option>'+
  (career?.players||[]).map(p=>'<option value="'+safe(p.name)+'">'+safe(p.name)+'</option>').join('')+'</select><button class="btn" type="submit">Request profile claim</button></form>')+
- '<p id="accountStatus" class="small" role="status"></p>';
+ '<p id="accountStatus" class="small" role="status"></p><p><button class="btn" type="button" id="myPlayerProfile">My player stats</button> <button class="btn" type="button" id="profileSignOut">Sign out</button></p>';
  $('editForm').addEventListener('submit',saveProfile);
  $('pimage').addEventListener('change',renderPhotoPreview);renderPhotoPreview();
  $('removePhoto')?.addEventListener('click',removeOwnPhoto);
@@ -623,6 +630,65 @@ $('cleanupForm').addEventListener('submit',async e=>{
  $('cleanupMessage').textContent='Saved. Public career directory updated; the underlying LeagueLeader records remain unchanged.';
  save.disabled=false;
 });
+
+function authMessage(text){const node=$('profileAuthStatus');if(node)node.textContent=text}
+$('account').addEventListener('submit',async ev=>{
+ const form=ev.target;
+ if(!['profileSignIn','profileRecovery'].includes(form.id))return;
+ ev.preventDefault();
+ if(!client){authMessage('Sign-in is unavailable. Reload the page and try again.');return}
+ if(authBusy||!form.reportValidity())return;
+ authBusy=true;const button=form.querySelector('button[type="submit"]');button.disabled=true;
+ try{
+  if(form.id==='profileRecovery'){
+   const {error}=await client.auth.updateUser({password:$('newPassword').value});
+   if(error)throw error;
+   recovering=false;renderAccount();if($('accountStatus'))$('accountStatus').textContent='Password updated.';
+  }else{
+   authMessage('Signing in…');
+   const {data,error}=await client.auth.signInWithPassword({email:$('profileEmail').value.trim(),password:$('profilePassword').value});
+   if(error)throw error;
+   user=data.user;myProfile=profiles.find(p=>p.user_id===user.id)||null;
+   renderAccount();await load(true);
+  }
+ }catch(e){authMessage(e.message||'Unable to sign in. Try again.')}
+ finally{authBusy=false;button.disabled=false}
+});
+$('account').addEventListener('click',async ev=>{
+ const action=ev.target.closest('button')?.id;
+ if(!['profileReset','profileSignOut','myPlayerProfile'].includes(action))return;
+ if(!client){authMessage('Sign-in is unavailable. Reload the page and try again.');return}
+ if(action==='myPlayerProfile'){
+  const name=ownPlayerName();
+  if(!name){$('accountStatus').textContent='Link your LeagueLeader name below. Your player claim must be approved before it opens automatically.';return}
+  chosen=name;playerTab='overview';history.replaceState(null,'','/profiles?player='+encodeURIComponent(name));renderNames();renderPlayer();$('view').scrollIntoView({behavior:'smooth',block:'start'});return;
+ }
+ const button=ev.target.closest('button');button.disabled=true;
+ try{
+  if(action==='profileReset'){
+   const email=$('profileEmail');if(!email.value.trim()||!email.reportValidity()){authMessage('Enter your email address first.');return}
+   const {error}=await client.auth.resetPasswordForEmail(email.value.trim(),{redirectTo:location.origin+'/profiles'});
+   if(error)throw error;authMessage('If an account exists for this email, check your inbox for password reset instructions.');
+  }else{
+   const {error}=await client.auth.signOut();if(error)throw error;
+   user=null;myProfile=null;officer=false;recovering=false;
+   renderAccount();renderOfficer();renderCleanup();renderCareerAudit();renderPlayer();
+  }
+ }catch(e){const node=$('accountStatus');if(node)node.textContent=e.message;else authMessage(e.message)}
+ finally{button.disabled=false}
+});
+if(client)client.auth.onAuthStateChange((event,session)=>{
+ if(event==='PASSWORD_RECOVERY'){
+  recovering=true;user=session?.user||null;setTimeout(renderAccount,0);
+ }else if(event==='SIGNED_OUT'){
+  user=null;myProfile=null;officer=false;recovering=false;
+  setTimeout(()=>{renderAccount();renderOfficer();renderCleanup();renderCareerAudit();renderPlayer()},0);
+ }else if(event==='SIGNED_IN'&&session?.user.id!==user?.id){
+  setTimeout(()=>load(true),0);
+ }
+});
+renderAccount();
+
 $('search').addEventListener('input',renderNames);
 load();
 })();
