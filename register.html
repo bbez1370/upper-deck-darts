@@ -1,13 +1,13 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Create an account · Upper Deck Dart League</title><style>
 :root{color-scheme:dark;font-family:Inter,system-ui,Arial,sans-serif;background:#0a1018;color:#e7f7f0}*{box-sizing:border-box}body{margin:0;padding:26px 14px;background:radial-gradient(circle at top,#163e35,#0a1018 70%);min-height:100vh}.card{max-width:500px;margin:5vh auto;padding:28px;background:#14232e;border:1px solid #35574f;border-radius:20px;box-shadow:0 20px 70px #0005}h1{margin:10px 0;font-size:30px;line-height:1.1}p{line-height:1.5;color:#bad1ca}a{color:#85efba}label{display:block;margin:18px 0 7px;font-weight:650}input{display:block;width:100%;background:#0a1821;border:1px solid #507466;color:white;border-radius:10px;padding:14px;font-size:16px}input:focus{outline:2px solid #76e8ab}button{display:block;width:100%;margin-top:22px;padding:14px;border:0;border-radius:12px;color:#082d1d;background:#62dca0;font-weight:800;font-size:16px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}.notice{margin:16px 0;padding:13px;border-radius:12px;border:1px solid #42685d;background:#18352d;line-height:1.5;min-height:47px}.notice.err{background:#42242b;border-color:#965666;color:#ffe2e4}.notice.ok{background:#123a2e;border-color:#73c89f;color:#b5f4d0}.small{font-size:13px}.back{display:inline-block;margin:10px 0}
-</style></head><body><main class="card"><a class="back" href="/">← Back to Upper Deck</a><p class="small">🎯 TYSON'S UPPER DECK · PLAYER COMMUNITY</p><h1>Create your player account</h1><p>Register once to chat, request substitutes, and vote for Player of the Week. League moderators receive additional permissions after approval.</p>
+</style></head><body><main class="card"><a class="back" href="/">← Back to Upper Deck</a><p class="small">🎯 TYSON'S UPPER DECK · PLAYER COMMUNITY</p><h1>Create your player account</h1><p>Register once to personalize your player profile, chat, and request substitutes. League moderators receive additional permissions after approval.</p>
 <div id="status" class="notice" role="status" aria-live="polite">Ready to register. Complete the three fields below.</div>
 <form id="signupForm">
 <label for="display">Your display name</label><input id="display" name="display" required minlength="2" maxlength="40" autocomplete="nickname" placeholder="First and last name">
 <label for="email">Email address</label><input id="email" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
 <label for="password">Create a password</label><input id="password" name="password" type="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters">
 <button id="create" type="submit">Create my account</button>
-</form><p class="small">Your email may need confirmation before you can sign in. Never share your password with a league officer.</p><p><a href="/">Already registered? Return to Community and sign in.</a></p></main>
+</form><p class="small">Your email may need confirmation before you can sign in. Never share your password with a league officer.</p><p><a href="/profiles#my-account">Already registered? Sign in on Player Profile.</a></p></main>
 <script>
 const url='https://nnlfzmdranazqujklkrm.supabase.co';
 const key='sb_publishable_U3i_JSjunfsbtXEx8Wsuzw_LTQ9PPhb';
@@ -22,12 +22,12 @@ form.addEventListener('submit',async(event)=>{
  if(display.length<2){message('Please enter a display name with at least two characters.','err');return;}
  button.disabled=true;message('Contacting registration service…');
  try{
-  const endpoint=url+'/auth/v1/signup?redirect_to='+encodeURIComponent(location.origin+'/');
+  const endpoint=url+'/auth/v1/signup?redirect_to='+encodeURIComponent(location.origin+'/profiles');
   const response=await fetch(endpoint,{method:'POST',headers:{'apikey':key,'Content-Type':'application/json'},body:JSON.stringify({email,password,data:{display_name:display}})});
   let payload={};try{payload=await response.json()}catch(e){}
   if(!response.ok){message(payload.msg||payload.message||payload.error_description||'Registration failed (HTTP '+response.status+').','err');return;}
   if(!payload?.id&&!payload?.user?.id){message('The service returned an unexpected response. Please check whether your confirmation email arrived before trying again.','err');return;}
-  message('Account request accepted. Check your email for a confirmation link, then return to the Community page to sign in.','ok');
+  message('Account request accepted. Check your email for a confirmation link, then return to Player Profile to sign in.','ok');
   form.hidden=true;
  }catch(error){message('Unable to connect to registration: '+(error?.message||'Network error')+'. Try again or check whether your browser blocks Supabase.','err')}
  finally{button.disabled=false}
