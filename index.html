@@ -462,8 +462,8 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const payload=await loadIndividualData();
       if(!document.getElementById('weeklyMostImproved'))return;
       const formats=[
-        {label:'01 Games',metric:'PPD',slots:[1,3,5,7]},
-        {label:'Cricket Games',metric:'MPR',slots:[2,4,6]}
+        {label:'01 Games',metric:'PPD',seasonField:'ppd',seasonPlayers:data.players||[],slots:[1,3,5,7]},
+        {label:'Cricket Games',metric:'MPR',seasonField:'mpr',seasonPlayers:data.cricket||[],slots:[2,4,6]}
       ];
       const groups=formats.map(group=>{
         const scored=[];
@@ -474,21 +474,22 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
             group.slots.includes(g.inferred_game_number)&&g.metric===group.metric&&
             Number.isFinite(g.rate)&&g.rate>=0);
           const current=eligible.filter(g=>g.inferred_week===week);
-          const prior=eligible.filter(g=>g.inferred_week<week);
+          const seasonRecord=group.seasonPlayers.find(p=>norm(p.name)===norm(person.name)&&norm(p.team)===norm(person.team));
+          const seasonAverage=Number(seasonRecord?.[group.seasonField]);
           // Require a complete four-game 01 or three-game Cricket week.
           // This avoids inflating a player's weekly average with one strong game.
-          if(current.length!==group.slots.length||new Set(current.map(g=>g.inferred_game_number)).size!==group.slots.length||!prior.length)continue;
-          const baseline=prior.reduce((sum,g)=>sum+g.rate,0)/prior.length;
+          if(current.length!==group.slots.length||new Set(current.map(g=>g.inferred_game_number)).size!==group.slots.length||!seasonRecord||!Number.isFinite(seasonAverage)||seasonAverage<=0)continue;
+          const baseline=seasonAverage;
           const latest=current.reduce((sum,g)=>sum+g.rate,0)/current.length;
           const gain=latest-baseline;
           if(gain<=0)continue;
-          scored.push({name:person.name,team:person.team,baseline,latest,gain,previousGames:prior.length});
+          scored.push({name:person.name,team:person.team,baseline,latest,gain});
         }
         scored.sort((a,b)=>b.gain-a.gain||b.latest-a.latest||a.name.localeCompare(b.name));
         return {...group,leaders:scored.slice(0,5)};
       });
       const items=groups.map(group=>'<div class="improvement-game"><h4>'+safe(group.label)+'</h4>'+
-        (group.leaders.length?table(['#','Player','Previous avg.','This week','Improvement'],
+        (group.leaders.length?table(['#','Player','Season avg.','This week','Above season'],
           group.leaders.map((p,i)=>row([
             String(i+1),
             '<a href="/profiles?player='+encodeURIComponent(p.name)+'&tab=trends&week='+week+'">'+safe(p.name)+'</a><span class="mini muted"> · '+safe(p.team||'')+'</span>',
@@ -496,8 +497,8 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
             p.latest.toFixed(2)+' '+group.metric,
             '<strong>+'+p.gain.toFixed(2)+' '+group.metric+'</strong>'
           ]))):
-          '<p class="mini muted">No qualifying improvements with a complete current week and prior results.</p>')+'</div>').join('');
-      root.innerHTML='<p class="mini muted">The 01 leaderboard combines 301, 501, 701 and the final 501 (four games, PPD). Cricket combines all three games (MPR). Each player’s current-week average is compared with their average across earlier assigned games of the same type. A complete current week and at least one earlier assigned game are required. Rankings include only positive improvements and exclude confirmed substitutes.</p>'+
+          '<p class="mini muted">No qualifying players with complete weekly results above their season averages.</p>')+'</div>').join('');
+      root.innerHTML='<p class="mini muted">The 01 leaderboard combines 301, 501, 701 and the final 501 (four games, PPD). Cricket combines all three games (MPR). Each player’s current-week average is compared with their official LeagueLeader season-to-date average in that format (including the current week). A complete current week and a published season average are required. Rankings show the five largest positive differences and exclude confirmed substitutes.</p>'+
         '<div class="improvement-list">'+items+'</div>';
     }catch(e){
       if(document.getElementById('weeklyMostImproved'))
