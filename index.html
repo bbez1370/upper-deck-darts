@@ -324,7 +324,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       html+=`<h3>Top stories</h3>`;
       html+=sweeps.map(m=>`<div class="arecap">🧹 <b>Sweep:</b> ${safe(m.teams[m.wins[0]])} took all seven against ${safe(m.teams[1-m.wins[0]])}.</div>`).join("")||'<p>No 7–0 sweeps this week.</p>';
       if(upset)html+=`<div class="arecap">⚡ <b>Upset:</b> ${safe(upset.m.teams[upset.winner])} beat ${safe(upset.m.teams[1-upset.winner])}, despite entering the week with a lower game-win rate.</div>`;
-      html+='<h3>Top 5 Most Improved Players · Each Game</h3><div id="weeklyMostImproved"><p class="muted">Comparing player game results…</p></div>';
+      html+='<h3>Top 5 Most Improved Players · 01 & Cricket</h3><div id="weeklyMostImproved"><p class="muted">Comparing player game results…</p></div>';
       html+=`<div class="anote">Upsets compare the teams' game-win rates from completed prior weeks only. Teams without earlier results are not eligible for an upset label. Weekly recaps can be posted and pinned as official Community announcements by an officer.</div>`;
       if(bmod&&bu&&recapFor(week))html+='<p><button type="button" class="btn primary" id="publishWeeklyHighlights" data-week="'+week+'">📌 Publish & pin Week '+week+' recap</button><span id="weeklyRecapStatus" class="mini muted" style="margin-left:10px"></span></p>';
     } else if(analyticsPage==="power"){
@@ -461,37 +461,44 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
     try{
       const payload=await loadIndividualData();
       if(!document.getElementById('weeklyMostImproved'))return;
-      const formats=['301 D/D','Cricket (Game 2)','501 D/D (Game 3)','Cricket (Game 4)','701 O/D','Cricket (Game 6)','501 D/D (Game 7)'];
-      const perSlot=formats.map((title,index)=>{
-        const slot=index+1,metric=slot%2?'PPD':'MPR';
+      const formats=[
+        {label:'01 Games',metric:'PPD',slots:[1,3,5,7]},
+        {label:'Cricket Games',metric:'MPR',slots:[2,4,6]}
+      ];
+      const groups=formats.map(group=>{
         const scored=[];
         for(const person of payload.players||[]){
           if(confirmedExcluded(person.name))continue;
           const eligible=(person.games||[]).filter(g=>
-            Number.isInteger(Number(g.inferred_week))&&Number.isInteger(Number(g.inferred_game_number))&&
-            Number(g.inferred_game_number)===slot&&g.metric===metric&&
-            Number.isFinite(Number(g.rate))&&Number(g.rate)>=0);
-          // Do not rank ambiguous source rows as if they were verified.
-          const current=eligible.filter(g=>Number(g.inferred_week)===week);
-          const prior=eligible.filter(g=>Number(g.inferred_week)<week);
-          if(current.length!==1||prior.length<1)continue;
-          const baseline=prior.reduce((sum,g)=>sum+Number(g.rate),0)/prior.length;
-          const latest=Number(current[0].rate);
+            Number.isInteger(g.inferred_week)&&Number.isInteger(g.inferred_game_number)&&
+            group.slots.includes(g.inferred_game_number)&&g.metric===group.metric&&
+            Number.isFinite(g.rate)&&g.rate>=0);
+          const current=eligible.filter(g=>g.inferred_week===week);
+          const prior=eligible.filter(g=>g.inferred_week<week);
+          // Require a complete four-game 01 or three-game Cricket week.
+          // This avoids inflating a player's weekly average with one strong game.
+          if(current.length!==group.slots.length||new Set(current.map(g=>g.inferred_game_number)).size!==group.slots.length||!prior.length)continue;
+          const baseline=prior.reduce((sum,g)=>sum+g.rate,0)/prior.length;
+          const latest=current.reduce((sum,g)=>sum+g.rate,0)/current.length;
           const gain=latest-baseline;
           if(gain<=0)continue;
-          scored.push({name:person.name,team:person.team,baseline,latest,gain,n:prior.length});
+          scored.push({name:person.name,team:person.team,baseline,latest,gain,previousGames:prior.length});
         }
         scored.sort((a,b)=>b.gain-a.gain||b.latest-a.latest||a.name.localeCompare(b.name));
-        return {slot,title,metric,leaders:scored.slice(0,5)};
+        return {...group,leaders:scored.slice(0,5)};
       });
-      const items=perSlot.map(g=>'<div class="improvement-game"><h4>Game '+g.slot+' · '+safe(g.title)+'</h4>'+
-        (g.leaders.length?table(['#','Player','Previous avg.','This week','Improvement'],
-          g.leaders.map((p,i)=>row([String(i+1),'<a href="/profiles?player='+encodeURIComponent(p.name)+'&tab=trends&week='+week+'">'+safe(p.name)+'</a><span class="mini muted"> · '+safe(p.team||'')+'</span>',
-            p.baseline.toFixed(2)+' '+g.metric,p.latest.toFixed(2)+' '+g.metric,
-            '<strong>+'+p.gain.toFixed(2)+'</strong>']))):
-          '<p class="mini muted">No qualifying improvements with prior results for this game.</p>')+'</div>').join('');
-      root.innerHTML='<p class="mini muted">Top five positive gains in each of the seven game positions. This week’s individual PPD or MPR is compared with that player’s average in the same game position from earlier assigned weeks. Players need at least one prior result in that position. These are calculated from report-order week assignments, not timestamps on the player rows.</p>'+
-         '<div class="improvement-list">'+items+'</div>';
+      const items=groups.map(group=>'<div class="improvement-game"><h4>'+safe(group.label)+'</h4>'+
+        (group.leaders.length?table(['#','Player','Previous avg.','This week','Improvement'],
+          group.leaders.map((p,i)=>row([
+            String(i+1),
+            '<a href="/profiles?player='+encodeURIComponent(p.name)+'&tab=trends&week='+week+'">'+safe(p.name)+'</a><span class="mini muted"> · '+safe(p.team||'')+'</span>',
+            p.baseline.toFixed(2)+' '+group.metric,
+            p.latest.toFixed(2)+' '+group.metric,
+            '<strong>+'+p.gain.toFixed(2)+' '+group.metric+'</strong>'
+          ]))):
+          '<p class="mini muted">No qualifying improvements with a complete current week and prior results.</p>')+'</div>').join('');
+      root.innerHTML='<p class="mini muted">The 01 leaderboard combines 301, 501, 701 and the final 501 (four games, PPD). Cricket combines all three games (MPR). Each player’s current-week average is compared with their average across earlier assigned games of the same type. A complete current week and at least one earlier assigned game are required. Rankings include only positive improvements and exclude confirmed substitutes.</p>'+
+        '<div class="improvement-list">'+items+'</div>';
     }catch(e){
       if(document.getElementById('weeklyMostImproved'))
         document.getElementById('weeklyMostImproved').innerHTML='<p class="notice">Individual game improvements are unavailable: '+safe(e.message)+'</p>';
