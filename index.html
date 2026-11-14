@@ -324,6 +324,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       html+=`<h3>Top stories</h3>`;
       html+=sweeps.map(m=>`<div class="arecap">🧹 <b>Sweep:</b> ${safe(m.teams[m.wins[0]])} took all seven against ${safe(m.teams[1-m.wins[0]])}.</div>`).join("")||'<p>No 7–0 sweeps this week.</p>';
       if(upset)html+=`<div class="arecap">⚡ <b>Upset:</b> ${safe(upset.m.teams[upset.winner])} beat ${safe(upset.m.teams[1-upset.winner])}, despite entering the week with a lower game-win rate.</div>`;
+      html+='<h3>Outstanding Performers by Game</h3><div id="weeklyOutstanding"><p class="muted">Finding game leaders…</p></div>';
       html+='<h3>Top 5 Most Improved Players · 01 & Cricket</h3><div id="weeklyMostImproved"><p class="muted">Comparing player game results…</p></div>';
       html+=`<div class="anote">Upsets compare the teams' game-win rates from completed prior weeks only. Teams without earlier results are not eligible for an upset label. Weekly recaps can be posted and pinned as official Community announcements by an officer.</div>`;
       if(bmod&&bu&&recapFor(week))html+='<p><button type="button" class="btn primary" id="publishWeeklyHighlights" data-week="'+week+'">📌 Publish & pin Week '+week+' recap</button><span id="weeklyRecapStatus" class="mini muted" style="margin-left:10px"></span></p>';
@@ -367,7 +368,11 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
     }
     root.innerHTML=html;
     for(const id of ["aTeam","aPlayer","h2hA","h2hB","predWeek"]){if($a(id))$a(id).addEventListener("change",renderAnalytics)}
-    if(analyticsPage==="players")renderEligibility();if(analyticsPage==="records")renderVerifiedRecords();if(analyticsPage==="gamebreakdown")showIndividualGames();if(analyticsPage==="highlights"){const matches=matchData();renderMostImproved(matches.length?Math.max(...matches.map(m=>m.week)):0);}
+    if(analyticsPage==="players")renderEligibility();if(analyticsPage==="records")renderVerifiedRecords();if(analyticsPage==="gamebreakdown")showIndividualGames();if(analyticsPage==="highlights"){
+      const matches=matchData();
+      renderOutstandingPerformers(matches);
+      renderMostImproved(matches.length?Math.max(...matches.map(m=>m.week)):0);
+    }
   }
 
   let gameData=null,gameDataPromise=null,selectedIndividual="";
@@ -448,6 +453,46 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
         '<p class="mini muted">PPD and MPR are separate measures. Weekly averages use dated games and weight each game equally.</p>';
       document.getElementById("individualPlayerSelect")?.addEventListener("change",e=>{selectedIndividual=e.target.value;showIndividualGames()});
     }catch(e){if(document.getElementById("individualGamePanel"))document.getElementById("individualGamePanel").innerHTML='<div class="notice">Individual game report unavailable: '+safe(e.message)+'. Official standings are unaffected.</div>'}
+  }
+  async function renderOutstandingPerformers(matches){
+    const root=$a("weeklyOutstanding");
+    try{
+      const payload=await loadIndividualData();
+      if(!root.isConnected)return;
+      const completed=schedule.filter(week=>week.num<=payload.verified_through_week &&
+        week.matches.length>0 &&
+        matches.filter(match=>match.week===week.num&&match.sequence_valid).length===week.matches.length);
+      const week=completed.at(-1)?.num;
+      if(!week){
+        root.innerHTML='<p class="muted">Waiting for a complete week of timestamped player results.</p>';
+        return;
+      }
+      const formats=matches.find(match=>match.week===week&&match.sequence_valid).formats;
+      const leaders=formats.map(format=>({format,rate:-1,players:[]}));
+      for(const person of payload.players||[]){
+        if(confirmedExcluded(person.name))continue;
+        for(const game of person.games||[]){
+          if(game.inferred_week!==week||!game.played_at||!Number.isFinite(game.rate)||game.rate<0)continue;
+          const leader=leaders[game.inferred_game_number-1];
+          if(!leader||game.inferred_game_format!==leader.format)continue;
+          if(game.rate>leader.rate){
+            leader.rate=game.rate;
+            leader.players=[];
+          }
+          if(game.rate===leader.rate)leader.players.push(person);
+        }
+      }
+      root.innerHTML='<p class="mini muted">Week '+week+' · '+safe(completed.at(-1).date)+
+        ' · Highest PPD in 01 and highest MPR in Cricket.</p>'+
+        table(['Game','Format','Player','Score'],leaders.map((leader,index)=>row([
+          String(index+1),safe(leader.format),
+          leader.players.map(person=>'<a href="/profiles?player='+encodeURIComponent(person.name)+
+            '&tab=trends&week='+week+'">'+safe(person.name)+'</a> <span class="mini muted">· '+safe(person.team)+'</span>').join('<br>')||'—',
+          leader.players.length?leader.rate.toFixed(2)+(leader.format==='Cricket'?' MPR':' PPD'):'—'
+        ])));
+    }catch(error){
+      if(root.isConnected)root.innerHTML='<p class="notice">Game leaders are unavailable: '+safe(error.message)+'</p>';
+    }
   }
   async function renderMostImproved(week){
     const root=document.getElementById('weeklyMostImproved');
