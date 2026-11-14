@@ -339,7 +339,7 @@ function renderWeeklyTrends(){
  const chart=metric=>{
   const values=weeks.filter(w=>w[metric].length).map(w=>({week:w.week,games:w[metric].length,
       avg:w[metric].reduce((a,b)=>a+b,0)/w[metric].length}));
-  if(!values.length)return '<p class="muted">No inferred '+metric+' results yet.</p>';
+  if(!values.length)return '<p class="muted">No dated '+metric+' results yet.</p>';
   const max=Math.max(...values.map(v=>v.avg),1);
   return '<div class="weekly-chart" role="img" aria-label="'+safe(metric)+' individual weekly averages">'+
     values.map(v=>'<div class="weekly-label">W'+v.week+'</div><div class="weekly-line">'+
@@ -350,11 +350,10 @@ function renderWeeklyTrends(){
  const sum=lastThree.reduce((a,w)=>({wins:a.wins+w.wins,games:a.games+w.games}),{wins:0,games:0});
  const span=weeks.length?weeks[0].week+'–'+weeks.at(-1).week:'—';
  root.innerHTML='<h3>📈 2026–27 weekly performance</h3>'+
-  '<p class="small muted">Current season only. Games are read oldest to newest, then aligned to the dated team results using the seven-game order: 301, Cricket, 501, Cricket, 701, Cricket, 501. Skipped weeks stay skipped; dates are inferred from verified match alignment, not printed in the player report.</p>'+
-  (weeklyError?'<p class="season-warning">'+safe(weeklyError)+'</p>':'')+
-  '<p class="small muted">'+Number(weeklyData.matching?.full_medley_assigned||0)+' individual game entries across the league matched by complete seven-game sequences.</p>'+ 
+  '<p class="small muted">Game order verified through Week '+safe(weeklyData.verified_through_week)+' · '+safe(weeklyData.verified_through_date)+'.</p>'+
+  ((weeklyError||weeklyData.live_note)?'<p class="season-warning">'+safe(weeklyError||weeklyData.live_note)+'</p>':'')+
   '<details class="small" style="margin:10px 0"><summary>How were my weeks assigned?</summary>'+
-  '<p>LeagueLeader individual game rows are read oldest first. The importer compares each seven-game sequence with your team\'s dated match results and win/loss order. Exact individual-game format text is optional because the team report defines the 301 / Cricket / 501 / Cricket / 701 / Cricket / 501 order.</p>'+
+  '<p>Weekly stats use the exact game timestamps from the LeagueLeader export. Newly reported games get a week when a dated export is available.</p>'+
   (weeklyData.players||[]).filter(x=>[chosen,...(playerFor(chosen)?.aliases||[])].some(n=>equal(n,x.name))).map(x=>{
    const d=x.assignment_diagnostic||{};
    return '<div class="notice"><b>'+safe(x.name)+'</b> · Team '+safe(x.team)+

@@ -2,7 +2,7 @@
 from flask import Flask, jsonify, send_from_directory
 from bs4 import BeautifulSoup
 from datetime import datetime
-import requests, re, json, pathlib, time
+import csv, requests, re, json, pathlib, time
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT=pathlib.Path(__file__).parent
@@ -271,8 +271,16 @@ def get_individual_games(rr):
           'game':field('game')[:40],
           'achievements':achievements
         })
-    people=[]
-    for item in results.values():
+    people=list(results.values())
+    summarize_player_games(people)
+    return {'source':'LeagueLeader Location Stats Report',
+       'date_verified':False,'week_verified':False,
+       'note':'Individual rows have Week 0 and no date. Game rows are displayed in report order only, not assigned to a league week.',
+       'player_count':len(people),'game_count':scanned,'players':people}
+
+
+def summarize_player_games(people):
+    for item in people:
         item['summary']={}
         for typ in ('PPD','MPR'):
             group=[g for g in item['games'] if g['metric']==typ]
@@ -291,12 +299,7 @@ def get_individual_games(rr):
               'wins':sum(1 for g in group if g['win']),
               'achievements':totals
             }
-        people.append(item)
     people.sort(key=lambda p:(p['team'].lower(),p['name'].lower()))
-    return {'source':'LeagueLeader Location Stats Report',
-       'date_verified':False,'week_verified':False,
-       'note':'Individual rows have Week 0 and no date. Game rows are displayed in report order only, not assigned to a league week.',
-       'player_count':len(people),'game_count':scanned,'players':people}
 
 
 def normalize_individual_report(result):
@@ -1056,50 +1059,108 @@ def scoring_records():
             return jsonify({**achievement_cache['payload'],'stale':True})
         return jsonify({'error':'Could not load official scoring report: '+str(error)}),503
 
+def verified_player_games(live_players):
+    """Use the dated export for audited weeks and retain new rows as undated."""
+    people={}
+    weeks={}
+    with (ROOT/'verified_player_games.csv').open(newline='',encoding='utf-8') as report:
+        for row in csv.DictReader(report):
+            key=(norm(row['player']),norm(row['team']))
+            person=people.setdefault(key,{'name':row['player'],'team':row['team'],'games':[]})
+            week=int(row['week'])
+            stamp=datetime.fromisoformat(row['played_at'])
+            date=stamp.strftime('%m/%d/%Y')
+            weeks[week]=date
+            person['games'].append({
+                'metric':'MPR' if canonical_game_format(row['format'])=='cricket' else 'PPD',
+                'rate':float(row['rate']),'win':row['win']=='1',
+                'game':row['format'],'achievements':json.loads(row['achievements']),
+                'scoring_total':int(row['scoring_total']),'darts':int(row['darts']),
+                'played_at':row['played_at'],'inferred_week':week,'inferred_date':date,
+                'inferred_game_number':int(row['game_number']),
+                'inferred_game_format':row['format'],'inferred_decider':row['decider']=='1',
+                'week_confidence':'timestamped_export',
+            })
+
+    def signature(game):
+        return (game['metric'],canonical_game_format(game['game']),game['win'],
+                tuple(sorted(game['achievements'].items())))
+
+    for live in live_players:
+        key=(norm(live['name']),norm(live['team']))
+        person=people.get(key,{'name':live['name'],'team':live['team'],'games':[]})
+        remaining=list(range(len(live['games'])))
+        # Consume exact historical rows before allowing a cent of display rounding.
+        unmatched=[]
+        for game in person['games']:
+            index=next((i for i in remaining if signature(live['games'][i])==signature(game)
+                        and live['games'][i]['rate']==game['rate']),None)
+            if index is None:
+                unmatched.append(game)
+            else:
+                remaining.remove(index)
+        for game in unmatched:
+            index=next((i for i in remaining if signature(live['games'][i])==signature(game)
+                        and abs(live['games'][i]['rate']-game['rate'])<=0.0100001),None)
+            if index is not None:
+                remaining.remove(index)
+        # When the shared report cannot account for the audited records, its
+        # leftovers may be historical revisions. Keep the audited version.
+        if len(live['games'])-len(remaining)==len(person['games']):
+            person['games'].extend(live['games'][i] for i in remaining)
+            people[key]=person
+
+    players=list(people.values())
+    summarize_player_games(players)
+    verified=0
+    total=0
+    for person in players:
+        by_week={}
+        for game in person['games']:
+            week=game.get('inferred_week')
+            if week is not None:
+                by_week.setdefault(week,{'PPD':[],'MPR':[]})[game['metric']].append(game['rate'])
+        person['weekly']=[{
+            'week':week,'date':weeks[week],
+            **{metric:{'games':len(rates),'average':round(sum(rates)/len(rates),2)} if rates else None
+               for metric,rates in metrics.items()},
+        } for week,metrics in sorted(by_week.items())]
+        count=sum(len(v['PPD'])+len(v['MPR']) for v in by_week.values())
+        person['assignment_diagnostic']={
+            'assigned_final':count,'unassigned_final':len(person['games'])-count,
+            'team_match_weeks':sorted(by_week),
+            'player_01_games':sum(g['metric']=='PPD' for g in person['games']),
+            'player_cricket_games':sum(g['metric']=='MPR' for g in person['games']),
+        }
+        verified+=count
+        total+=len(person['games'])
+    return {'players':players,'game_count':total,'player_count':len(players),
+            'source':'LeagueLeader timestamped export and Location Stats Report',
+            'verified_through_week':max(weeks),'verified_through_date':weeks[max(weeks)],
+            'matching':{'assigned':verified,'unmatched':total-verified}}
+
+
 @app.route('/api/player-games')
 def individual_game_stats():
-    """Standalone optional statistics API. A failure cannot break /api/live."""
+    """Serve verified weekly slots and include newly reported, undated games."""
+    if player_games_cache['payload'] and time.time()-player_games_cache['at']<300:
+        return jsonify(player_games_cache['payload'])
+    live_note=None
     try:
-        if player_games_cache['payload'] and time.time()-player_games_cache['at']<300:
-            return jsonify(player_games_cache['payload'])
         _,soup=fetch(PLAYER_DETAIL)
-        result=normalize_individual_report(get_individual_games(rows(soup)))
-        # Transform the source report into inspectable ordered blocks FIRST.
-        # Only then perform team schedule alignment.
-        try:
-            official=refresh()
-            result=assign_normalized_report_weeks(result,official['matches'])
-            result=assign_candidate_weeks(result,official['matches'])
-            result['team_match_source_status']='available'
-        except Exception as match_error:
-            # The preprocessing output is still usable where the complete
-            # match chronology or an organizer-confirmed result establishes
-            # a week without relying on the separate team-match API.
-            result=assign_normalized_report_weeks(result,[])
-            result=assign_candidate_weeks(result,[])
-            result['team_match_source_status']='unavailable'
-            result['team_match_source_error']=str(match_error)[:140]
-        joe=next((p for p in result['players'] if norm(p['name'])=='joebanker'),None)
-        if joe:
-            # Organizer-confirmed regression example from October 28, 2026.
-            # Find the matching result by PPD, not by "last", because more
-            # weeks will be added to this live report.
-            known=[g for g in joe['games'] if g['metric']=='PPD' and abs(g['rate']-12.82)<0.005]
-            result['joe_week_3_check']={
-                'expected_ppd':12.82,'expected_week':3,
-                'expected_date':'10/28/2026','matching_game_count':len(known),
-                'matched_week':known[0].get('inferred_week') if len(known)==1 else None,
-                'matched_date':known[0].get('inferred_date') if len(known)==1 else None,
-                'passes':len(known)==1 and known[0].get('inferred_week')==3
-            }
-        if result['game_count']<20 or result['player_count']<5:
-            raise ValueError('Unrecognized player game table layout; no fabricated records returned.')
-        result['updated']=datetime.now().astimezone().isoformat(timespec='seconds')
-        player_games_cache.update(at=time.time(),payload=result)
-        return jsonify(result)
-    except Exception as error:
-        return jsonify({'error':str(error)[:200],
-                        'stale':player_games_cache['payload']}),503
+        live=get_individual_games(rows(soup))
+        if live['game_count']<20 or live['player_count']<5:
+            raise ValueError('Unrecognized player game table layout')
+        live_players=live['players']
+    except Exception:
+        live_note='Live player report unavailable. Showing the timestamped export.'
+        live_players=[]
+    result=verified_player_games(live_players)
+    if live_note:
+        result['live_note']=live_note
+    result['updated']=datetime.now().astimezone().isoformat(timespec='seconds')
+    player_games_cache.update(at=time.time(),payload=result)
+    return jsonify(result)
 
 @app.route('/api/player-report-inspect')
 def player_report_inspect():
