@@ -25,8 +25,33 @@ const normalize=s=>String(s||'').toLowerCase().replace(/adolphson/g,'adolfson').
 const mkey=(a,b)=>[normalize(a),normalize(b)].sort().join('|');
 let data=null,updatedAt=null,loadedOnce=false,selectedStat='ppd';
 let activePlayer='',activeTeam='';
-// Enter CONFIRMED substitute names here; currently no names have been provided.
-const substituteNames=[];const isSub=n=>substituteNames.some(x=>normalize(x)===normalize(n))||(window.analyticsExcludedNames||[]).some(x=>normalize(x)===normalize(n));
+// The 2026–27 roster is independent of the report's match-night substitutions.
+const rosterPairs={
+  adolfsonkornbau:['Keith Adolphson','Kirk Kornbau'],
+  bengier:['Crystal Bengier','Jeff Bengier'],
+  cadywilson:['Jon Cady','Mike Willson'],
+  conwaybanker:['Scott Conway','Joe Banker'],
+  cregohuff:['Austyn Crego','Wyatt Huff'],
+  fowlersnyder:['Matt Fowler','Ed Snyder'],
+  hartmannfleming:['Brian Hartmann','Todd Fleming'],
+  hedgesmartinez:['Jeff Hedges','Pedro Martinez'],
+  mandellvanson:['Raymond Mandell','Ted VanSon'],
+  nikkiandjess:['Nikki','Jess Proctor'],
+  paynepayne:['April Payne','Matt Payne'],
+  princeprince:['Carolee Prince','Scott Prince'],
+  reddingamorese:['Rick Redding','Donald Amorese'],
+  rossdebattista:['Kurt Ross','Daren Debattista'],
+  tysonscott:['Bob Tyson','Eric Scott'],
+  vansonpellegrino:['Ty Vanson','Norma Pellegrino'],
+  vickysbeer:['Bob Grillo','Sam Pellegrino'],
+  wolfangergates:['Jeremy Wolfanger','Bruce Gates']
+};
+function leaderboardEligible({name,team}){
+  const player=normalize(name);
+  const pair=rosterPairs[normalize(team)];
+  return !!pair?.some(member=>normalize(member)===player) &&
+    !(window.analyticsExcludedNames||[]).some(excluded=>normalize(excluded)===player);
+}
 const fallbackMessage='Live standings are temporarily unavailable. Use the official LeagueLeader reports linked below.';
 const nowLocal=()=>{const dt=new Date();return new Date(dt.getFullYear(),dt.getMonth(),dt.getDate());};
 function dateLocal(s){const [month,day,year]=s.split('/').map(Number);return new Date(year,month-1,day);}
@@ -42,20 +67,16 @@ function renderHome(){
  const teams=[...(data.teams||[])].sort((a,b)=>b.winPct-a.winPct||b.wins-a.wins);
  $('homeLeaders').innerHTML=teams.slice(0,5).map((t,i)=>`<div class="row between" style="padding:8px 0;border-bottom:1px solid #273d43"><span><b>${i+1}.</b> ${htmlEscape(t.name)}</span><strong>${t.wins}–${t.games-t.wins}</strong></div>`).join('');
  $('homeTeamCount').textContent=teams.length||'—';$('homePlayerCount').textContent=(data.players||[]).length||'—';$('homeMatchCount').textContent=(data.matches||[]).length||'—';
- const topPPD=[...(data.players||[])].filter(p=>!isSub(p.name)).sort((a,b)=>b.ppd-a.ppd)[0],topMPR=[...(data.cricket||[])].filter(p=>!isSub(p.name)).sort((a,b)=>b.mpr-a.mpr)[0];
+ const topPPD=[...(data.players||[])].filter(leaderboardEligible).sort((a,b)=>b.ppd-a.ppd)[0],topMPR=[...(data.cricket||[])].filter(leaderboardEligible).sort((a,b)=>b.mpr-a.mpr)[0];
  $('homePlayerPreview').innerHTML=(topPPD?`<p><b>01 PPD:</b> ${htmlEscape(topPPD.name)} · ${Number(topPPD.ppd).toFixed(2)}</p>`:'')+(topMPR?`<p><b>Cricket MPR:</b> ${htmlEscape(topMPR.name)} · ${Number(topMPR.mpr).toFixed(2)}</p>`:'');
 }
 const teamMprCap=475;
-const teamMprRosterPairs={
-  nikkiandjess:['Nikki','Jess Proctor'],
-  rossdebattista:['Kurt Ross','Daren Debattista'],
-  tysonscott:['Bob Tyson','Eric Scott']
-};
 function teamMpr(team){
   const key=normalize(team);
-  const reported=(data.cricket||[]).filter(p=>normalize(p.team)===key&&!isSub(p.name));
-  const roster=teamMprRosterPairs[key];
-  const pair=roster?roster.map(name=>reported.find(p=>normalize(p.name)===normalize(name))):reported;
+  const roster=rosterPairs[key];
+  if(!roster)return null;
+  const reported=(data.cricket||[]).filter(p=>normalize(p.team)===key&&leaderboardEligible(p));
+  const pair=roster.map(name=>reported.find(p=>normalize(p.name)===normalize(name)));
   if(pair.length!==2||pair.some(p=>!p||!Number.isFinite(p.mpr)||p.mpr<0||!(p.games>0)))return null;
   return {pair,total:pair.reduce((sum,p)=>sum+Math.round(p.mpr*100),0)};
 }
@@ -76,7 +97,7 @@ function renderPlayers(){
  if(!data){table.innerHTML=`<tr><td colspan="5">${fallbackMessage}</td></tr>`;return;}
  const q=$('playerSearch').value.toLowerCase().trim(),team=$('playerTeam').value;
  const src=selectedStat==='ppd'?data.players:data.cricket;
- const list=[...(src||[])].filter(p=>!isSub(p.name)).sort((a,b)=>Number(b[selectedStat])-Number(a[selectedStat])||a.name.localeCompare(b.name));
+ const list=[...(src||[])].filter(leaderboardEligible).sort((a,b)=>Number(b[selectedStat])-Number(a[selectedStat])||a.name.localeCompare(b.name));
  const filtered=list.map((p,i)=>({...p,rank:i+1})).filter(p=>(!q||`${p.name} ${p.team}`.toLowerCase().includes(q))&&(!team||normalize(p.team)===normalize(team)));
  $('statColumn').textContent=selectedStat.toUpperCase();
  table.innerHTML=filtered.length?filtered.map(p=>`<tr><td class="${p.rank<=3?'toprank':''}">${p.rank}</td><td><button class="clicklink" data-player="${htmlEscape(p.name)}">${htmlEscape(p.name)}</button></td><td><button class="clicklink" data-team="${htmlEscape(p.team)}">${htmlEscape(p.team)}</button></td><td class="num">${p.games}</td><td class="num toprank">${Number(p[selectedStat]).toFixed(2)}</td></tr>`).join(''):'<tr><td colspan="5">No matching players.</td></tr>';
@@ -109,8 +130,8 @@ function teamHistory(name){let k=normalize(name),out=[];for(const w of schedule)
 function showPlayer(name){activePlayer=name;view('playerprofile');}
 function showTeam(name){activeTeam=name;view('teamprofile');}
 function showHistoryGame(week,home){const w=schedule.find(x=>x.num===Number(week)),m=w?.matches.find(m=>normalize(m.home)===normalize(home));if(!m)return;$('weekSelect').value=String(w.num);view('schedule');showDetail(w,m);}
-function renderPlayerProfile(){const root=$('playerProfileContent');if(!data){root.innerHTML='<p>Waiting for live data.</p>';return;}const a=playerByName(activePlayer);if(!a.team){root.innerHTML='<p>Player not found in current report.</p>';return;}const hist=teamHistory(a.team), ppdRank=(data.players||[]).filter(p=>!isSub(p.name)).sort((a,b)=>b.ppd-a.ppd).findIndex(p=>normalize(p.name)===normalize(a.name))+1,mprRank=(data.cricket||[]).filter(p=>!isSub(p.name)).sort((a,b)=>b.mpr-a.mpr).findIndex(p=>normalize(p.name)===normalize(a.name))+1;
-let out=`<div class="eyebrow" style="margin-top:20px">Player profile</div><h2>${htmlEscape(a.name)}</h2><button class="clicklink" data-team="${htmlEscape(a.team)}">${htmlEscape(a.team)}</button>${isSub(a.name)?'<p class="pill">Substitute · not leaderboard eligible</p>':''}<div class="profilegrid"><div class="profilemetric"><small>01 · PPD</small><b>${a.p?Number(a.p.ppd).toFixed(2):'—'}</b><small>${a.p?.games??'—'} games</small></div><div class="profilemetric"><small>Cricket · MPR</small><b>${a.c?Number(a.c.mpr).toFixed(2):'—'}</b><small>${a.c?.games??'—'} games</small></div><div class="profilemetric"><small>PPD leaderboard</small><b>${ppdRank>0?'#'+ppdRank:'—'}</b><small>Provisional rank</small></div><div class="profilemetric"><small>MPR leaderboard</small><b>${mprRank>0?'#'+mprRank:'—'}</b><small>Provisional rank</small></div></div><h3>Weekly team match history</h3><div class="note">The match scores below are team results. Individual game-by-game PPD and MPR for each assigned week are available in the player's Weekly Trends profile. Week assignments are based on the ordered LeagueLeader reports and the dated team schedule.</div><p><a class="btn" href="/profiles?player=${encodeURIComponent(a.name)}&tab=trends">View individual weekly stats →</a></p>`;
+function renderPlayerProfile(){const root=$('playerProfileContent');if(!data){root.innerHTML='<p>Waiting for live data.</p>';return;}const a=playerByName(activePlayer);if(!a.team){root.innerHTML='<p>Player not found in current report.</p>';return;}const hist=teamHistory(a.team), ppdRank=(data.players||[]).filter(leaderboardEligible).sort((a,b)=>b.ppd-a.ppd).findIndex(p=>normalize(p.name)===normalize(a.name))+1,mprRank=(data.cricket||[]).filter(leaderboardEligible).sort((a,b)=>b.mpr-a.mpr).findIndex(p=>normalize(p.name)===normalize(a.name))+1;
+let out=`<div class="eyebrow" style="margin-top:20px">Player profile</div><h2>${htmlEscape(a.name)}</h2><button class="clicklink" data-team="${htmlEscape(a.team)}">${htmlEscape(a.team)}</button>${!leaderboardEligible(a)?'<p class="pill">Ineligible for player leaderboards</p>':''}<div class="profilegrid"><div class="profilemetric"><small>01 · PPD</small><b>${a.p?Number(a.p.ppd).toFixed(2):'—'}</b><small>${a.p?.games??'—'} games</small></div><div class="profilemetric"><small>Cricket · MPR</small><b>${a.c?Number(a.c.mpr).toFixed(2):'—'}</b><small>${a.c?.games??'—'} games</small></div><div class="profilemetric"><small>PPD leaderboard</small><b>${ppdRank>0?'#'+ppdRank:'—'}</b><small>Provisional rank</small></div><div class="profilemetric"><small>MPR leaderboard</small><b>${mprRank>0?'#'+mprRank:'—'}</b><small>Provisional rank</small></div></div><h3>Weekly team match history</h3><div class="note">The match scores below are team results. Individual game-by-game PPD and MPR for each assigned week are available in the player's Weekly Trends profile. Week assignments are based on the ordered LeagueLeader reports and the dated team schedule.</div><p><a class="btn" href="/profiles?player=${encodeURIComponent(a.name)}&tab=trends">View individual weekly stats →</a></p>`;
 out+=hist.map(x=>`<div class="historyrow"><span><b>Week ${x.w.num} · ${htmlEscape(x.w.date)}</b><br><small>vs. ${htmlEscape(x.other)}</small></span><button class="btn" data-historyweek="${x.w.num}" data-historyhome="${htmlEscape(x.m.home)}">${x.sc?`${x.own}–${x.opp} ${x.own>x.opp?'W':'L'}`:'Scheduled'} →</button></div>`).join('');out+='<p class="muted mini">Individual weekly averages are calculated from imported game-level results. Weeks without an unambiguous match assignment may be omitted from those trends.</p>';root.innerHTML=out;}
 function renderTeamProfile(){const root=$('teamProfileContent');if(!data){root.innerHTML='<p>Waiting for live data.</p>';return;}const t=(data.teams||[]).find(t=>normalize(t.name)===normalize(activeTeam)),h=teamHistory(activeTeam), names=[...new Map([...(data.players||[]),...(data.cricket||[])].filter(p=>normalize(p.team)===normalize(activeTeam)).map(p=>[normalize(p.name),p.name])).values()],played=h.filter(x=>x.sc),matchWins=played.filter(x=>x.own>x.opp).length,mpr=teamMpr(activeTeam);
 let out=`<div class="eyebrow" style="margin-top:20px">Team details</div><h2>${htmlEscape(t?.name||activeTeam)}</h2><div id="teamPhotoPanel" class="team-photo-card"><div class="team-photo-placeholder">📸 Team photo</div></div><div class="profilegrid"><div class="profilemetric"><small>Game wins</small><b>${t?.wins??'—'}</b></div><div class="profilemetric"><small>Game losses</small><b>${t?t.games-t.wins:'—'}</b></div><div class="profilemetric"><small>Match wins</small><b>${matchWins}</b></div><div class="profilemetric"><small>Match losses</small><b>${played.length-matchWins}</b></div></div><h3>Current team Cricket MPR</h3><p><b>${teamMprLabel(mpr)}</b> <span class="mini muted">· 4.75 preseason cap</span></p>${mpr?'<p class="mini muted">'+mpr.pair.map(p=>htmlEscape(p.name)+' '+p.mpr.toFixed(2)).join(' + ')+'</p>':''}<h3>Team roster</h3><div class="row">${names.map(n=>`<a class="btn" href="/profiles?player=${encodeURIComponent(n)}">${htmlEscape(n)}</a>`).join('')}</div><h3 style="margin-top:25px">Recent results & upcoming matchups</h3>`;
@@ -224,7 +245,6 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
   const matchLog=(t)=>matchData().filter(m=>m.teams.some(n=>norm(n)===norm(t))).map(m=>({m,week:m.week,for:won(m,t),against:7-won(m,t),other:m.teams.find(n=>norm(n)!==norm(t)),win:won(m,t)>3})).sort((a,b)=>a.week-b.week);
   const teamRecord=t=>analyticsTeams().find(x=>norm(x.name)===norm(t));
   const allTeams=()=>analyticsTeams().map(x=>x.name);
-  const confirmedExcluded=n=>exclusionRows.some(x=>norm(x.player_name)===norm(n))||isSub(n);
   const pct=n=>(100*n).toFixed(1)+"%";
   const rate=t=>{const r=teamRecord(t);return r?r.wins/Math.max(1,r.games):0.5};
   const form=t=>{const list=matchLog(t).slice(-3);if(!list.length)return rate(t);return list.reduce((a,x)=>a+x.for/7,0)/list.length};
@@ -312,7 +332,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const completed=matchData(),latest=completed.length?Math.max(...completed.map(m=>m.week)):0;
       const rs=ranks(),sweeps=completed.filter(m=>m.wins.every(x=>x===m.wins[0]));
       html+=pageTitle("League Analytics Overview","Performance analytics are separate from the official LeagueLeader standings. Scores use completed recorded matches only.");
-      html+=cards(metric("Completed matches",completed.length,"Of 207 scheduled")+metric("Latest results","Week "+(latest||"—"),"From LeagueLeader")+metric("7–0 sweeps",sweeps.length,"Recorded matches")+metric("Eligible player lists",eligibleSynced?"Filtered":"Provisional","Confirmed exclusions only"));
+      html+=cards(metric("Completed matches",completed.length,"Of 207 scheduled")+metric("Latest results","Week "+(latest||"—"),"From LeagueLeader")+metric("7–0 sweeps",sweeps.length,"Recorded matches")+metric("Eligible player lists","Rostered only","Current team rosters"));
       html+=pageTitle("Power Rankings: top five",powerRankingWeights);
       html+=table(["Power rank","Team","Score","Recent form"],rs.slice(0,5).map((r,i)=>row([String(i+1),safe(r.name),r.score.toFixed(1),pct(r.recent)])));
       const notable=rs.filter(r=>r.matches>=2&&Math.abs(r.recent-r.overall)>=0.18).sort((a,b)=>Math.abs(b.recent-b.overall)-Math.abs(a.recent-a.overall)).slice(0,4);
@@ -327,15 +347,15 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       html+=`<h3>Weekly performance</h3><div class="atrend">${hist.map(h=>`<div><span>W${h.week}</span><div class="abar"><i style="width:${100*h.for/7}%"></i></div><b>${h.for}–${h.against}</b></div>`).join("")||'<p>No completed games yet.</p>'}</div>`;
       html+=table(["Week","Opponent","Game score","Result"],hist.map(h=>row([String(h.week),safe(h.other),`${h.for}–${h.against}`,h.win?"Win":"Loss"])));
     } else if(analyticsPage==="players"){
-      const players=[...(data.players||[])],cricket=[...(data.cricket||[])],eligible=players.filter(p=>!confirmedExcluded(p.name)),eligibleC=cricket.filter(p=>!confirmedExcluded(p.name));
+      const players=[...(data.players||[])],cricket=[...(data.cricket||[])],eligible=players.filter(leaderboardEligible),eligibleC=cricket.filter(leaderboardEligible);
       const topP=eligible.sort((a,b)=>b.ppd-a.ppd)[0],topC=eligibleC.sort((a,b)=>b.mpr-a.mpr)[0];
       html+=pageTitle("Player Analytics","Season PPD and MPR are verified. Individual weekly game trends are available in Player Profiles.");
       html+=cards(metric("Leading 01 PPD",topP?Number(topP.ppd).toFixed(2):"—",topP?.name||"")+metric("Leading Cricket MPR",topC?Number(topC.mpr).toFixed(2):"—",topC?.name||""));
       html+=`<label>Compare player ${`<select id="aPlayer" class="form">${players.map(p=>`<option value="${safe(p.name)}" ${norm($a("aPlayer")?.value||"")===norm(p.name)?"selected":""}>${safe(p.name)}</option>`).join("")}</select>`}</label>`;
       const pName=$a("aPlayer")?.value||players[0]?.name||"",p=players.find(z=>norm(z.name)===norm(pName)),c=cricket.find(z=>norm(z.name)===norm(pName));
-      html+=cards(metric("01 PPD",p?.ppd??"—",`${p?.games??0} games`)+metric("Cricket MPR",c?.mpr??"—",`${c?.games??0} games`)+metric("Team",p?.team||c?.team||"—","Season listing")+metric("Eligibility",confirmedExcluded(pName)?"Excluded":"Provisional","Only confirmed substitutes removed"));
+      html+=cards(metric("01 PPD",p?.ppd??"—",`${p?.games??0} games`)+metric("Cricket MPR",c?.mpr??"—",`${c?.games??0} games`)+metric("Team",p?.team||c?.team||"—","Season listing")+metric("Eligibility",(p||c)&&leaderboardEligible(p||c)?"Rostered":"Excluded","Current team roster"));
       html+=`<div class="anote">Season statistics shown here come from LeagueLeader. Visit Player Profiles for individual weekly game breakdowns.</div>`;
-      html+=pageTitle("Leaderboard eligibility","Only confirmed substitute or ineligible records are removed. These are provisional until an officer verifies the exclusion list.");
+      html+=pageTitle("Leaderboard eligibility","Current-season leaderboards use the two rostered players per team.");
       html+=`<div id="aExclusions"></div>`;
     } else if(analyticsPage==="highlights"){
       const ms=matchData();const week=ms.length?Math.max(...ms.map(m=>m.week)):null,latest=ms.filter(m=>m.week===week);
@@ -427,7 +447,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const valid=choices.some(p=>norm(p.name)===norm(selectedIndividual));
       if(!valid)selectedIndividual=choices[0].name;
       const p=choices.find(p=>norm(p.name)===norm(selectedIndividual))||choices[0];
-      const createSelect=()=>'<label for="individualPlayerSelect">Select player</label><select id="individualPlayerSelect" class="form">'+choices.map(x=>'<option value="'+safe(x.name)+'" '+(norm(x.name)===norm(p.name)?'selected':'')+'>'+safe(x.name)+' · '+safe(x.team)+(confirmedExcluded(x.name)?' (excluded from leaderboards)':'')+'</option>').join("")+'</select>';
+      const createSelect=()=>'<label for="individualPlayerSelect">Select player</label><select id="individualPlayerSelect" class="form">'+choices.map(x=>'<option value="'+safe(x.name)+'" '+(norm(x.name)===norm(p.name)?'selected':'')+'>'+safe(x.name)+' · '+safe(x.team)+(!leaderboardEligible(x)?' (excluded from leaderboards)':'')+'</option>').join("")+'</select>';
       const ppd=p.summary?.PPD,mpr=p.summary?.MPR;
       const fmt=x=>typeof x==="number"?x.toFixed(2):"—";
       const summary=cards(
@@ -498,7 +518,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
         let best=null;
         let players=[];
         for(const person of payload.players||[]){
-          if(confirmedExcluded(person.name))continue;
+          if(!leaderboardEligible(person))continue;
           const games=(person.games||[]).filter(game=>game.inferred_week===week &&
             game.played_at && game.metric===format.metric && format.slots.includes(game.inferred_game_number) &&
             Number.isFinite(game.scoring_total) && game.scoring_total>=0 && game.darts>0);
@@ -549,7 +569,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const groups=formats.map(group=>{
         const scored=[];
         for(const person of payload.players||[]){
-          if(confirmedExcluded(person.name))continue;
+          if(!leaderboardEligible(person))continue;
           let priorScore=0,priorDarts=0,weekScore=0,weekDarts=0;
           for(const game of person.games||[]){
             if(game.metric!==group.metric||!Number.isInteger(game.inferred_week)||
@@ -597,7 +617,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const payload=await response.json();
       if(!response.ok||payload.error)throw Error(payload.error||'LeagueLeader achievement report unavailable');
       if(!document.getElementById("individualRecords"))return;
-      const players=(payload.players||[]).filter(p=>!confirmedExcluded(p.name));
+      const players=(payload.players||[]).filter(leaderboardEligible);
       const labels=[
         ['low_tons','Low Tons'],
         ['high_tons','High Tons'],
@@ -637,7 +657,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
   }
   function renderEligibility(){
     const el=$a("aExclusions");if(!el)return;
-    el.innerHTML=`<p class="mini muted">${eligibleSynced?"Database exclusions loaded":"Database exclusions not yet verified"} · ${exclusionRows.length} confirmed records. An officer must verify names; no substitutes have been inferred.</p>`+
+    el.innerHTML=`<p class="mini muted">${eligibleSynced?"Database exclusions loaded":"Database exclusions not yet verified"} · ${exclusionRows.length} confirmed records. Officers can add exclusions for rostered players.</p>`+
       (exclusionRows.length?`<div>${exclusionRows.map(p=>`<div class="row between"><span>${safe(p.player_name)} (${safe(p.reason)})</span>${bmod?`<button class="btn" data-remove-exclusion="${safe(p.player_name)}">Remove</button>`:""}</div>`).join("")}</div>`:"")+
       (bmod?`<form id="aExcludeForm" class="row"><input class="form" id="aExcludeName" maxlength="80" placeholder="Exact player name" required><select class="form" id="aExcludeReason"><option value="substitute">Substitute</option><option value="ineligible">Other ineligible</option></select><button class="btn primary" type="submit">Confirm exclusion</button></form>`:`<p class="mini muted">Only approved bulletin-board moderators can confirm or remove exclusions. Current standings and team records remain unaffected.</p>`);
     $a("aExcludeForm")?.addEventListener("submit",async e=>{e.preventDefault();const name=$a("aExcludeName").value.trim();if(!name||!bc||!bu)return;const {error}=await bc.from("league_player_exclusions").insert({player_name:name,reason:$a("aExcludeReason").value,confirmed_by:bu.id});if(error){alert(error.message);return;}await loadEligibility();renderAnalytics()});
@@ -646,7 +666,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
   async function loadEligibility(){
     if(!bc)return;
     const {data:rows,error}=await bc.from("league_player_exclusions").select("player_name,reason,confirmed_at").order("player_name");
-    if(!error){exclusionRows=rows||[];eligibleSynced=true;window.analyticsExcludedNames=exclusionRows.map(x=>x.player_name);renderStandings();if(document.querySelector("#teamprofile.active"))renderTeamProfile();renderPlayers();renderHome();}
+    if(!error){exclusionRows=rows||[];eligibleSynced=true;window.analyticsExcludedNames=exclusionRows.map(x=>x.player_name);renderStandings();if(document.querySelector("#teamprofile.active"))renderTeamProfile();if(document.querySelector("#playerprofile.active"))renderPlayerProfile();renderPlayers();renderHome();}
   }
   $a("analyticsTabs").addEventListener("click",e=>{const t=e.target.closest("[data-analytic]");if(!t)return;analyticsPage=t.dataset.analytic;renderAnalytics()});
   window.renderAnalytics=renderAnalytics;
