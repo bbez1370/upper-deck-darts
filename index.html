@@ -236,14 +236,17 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
     return {subject:'Weekly League Highlights · Week '+week,body:lines.join('\n\n')};
   };
   const gameByType=(t,needle)=>{let a=0,b=0;for(const x of matchLog(t)){x.m.formats.forEach((f,i)=>{if(needle(f)){b++;if(norm(x.m.teams[x.m.wins[i]])===norm(t))a++;}})}return {wins:a,games:b,rate:b?a/b:0};};
+  const powerRankingWeights="40% recent game wins (last three matches), 30% season game wins, 20% season match wins, and 10% opponent strength.";
   function ranks(){
     return analyticsTeams().map(t=>{
       const matches=matchLog(t.name);
       const opp=matches.map(x=>rate(x.other));
       const strength=opp.length?opp.reduce((a,b)=>a+b,0)/opp.length:0.5;
       const recent=form(t.name),overall=rate(t.name);
-      const score=100*(0.6*recent+0.3*overall+0.1*strength);
-      return {name:t.name,score,recent,overall,strength,matches:matches.length};
+      const matchWins=matches.filter(match=>match.win).length;
+      const matchRate=matches.length?matchWins/matches.length:0.5;
+      const score=100*(0.4*recent+0.3*overall+0.2*matchRate+0.1*strength);
+      return {name:t.name,score,recent,overall,matchRate,strength,matches:matches.length};
     }).sort((a,b)=>b.score-a.score);
   }
   const metric=(label,value,note)=>`<div class="ametric"><small>${safe(label)}</small><strong>${safe(value)}</strong><small>${safe(note)}</small></div>`;
@@ -290,7 +293,7 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       const rs=ranks(),sweeps=completed.filter(m=>m.wins.every(x=>x===m.wins[0]));
       html+=pageTitle("League Analytics Overview","Performance analytics are separate from the official LeagueLeader standings. Scores use completed recorded matches only.");
       html+=cards(metric("Completed matches",completed.length,"Of 207 scheduled")+metric("Latest results","Week "+(latest||"—"),"From LeagueLeader")+metric("7–0 sweeps",sweeps.length,"Recorded matches")+metric("Eligible player lists",eligibleSynced?"Filtered":"Provisional","Confirmed exclusions only"));
-      html+=pageTitle("Power Rankings: top five","Weighted 60% last three matches, 30% season game-win rate, 10% opponent strength. Not official standings.");
+      html+=pageTitle("Power Rankings: top five",powerRankingWeights);
       html+=table(["Power rank","Team","Score","Recent form"],rs.slice(0,5).map((r,i)=>row([String(i+1),safe(r.name),r.score.toFixed(1),pct(r.recent)])));
       const notable=rs.filter(r=>r.matches>=2&&Math.abs(r.recent-r.overall)>=0.18).sort((a,b)=>Math.abs(b.recent-b.overall)-Math.abs(a.recent-a.overall)).slice(0,4);
       html+=pageTitle("Teams Trending Up / Down","Highlights teams whose game-win rate over their last three matches differs from their season average by at least 18 percentage points.");
@@ -329,8 +332,8 @@ binit().catch(e=>bnotice('Community startup failed: '+e.message,true));
       html+=`<div class="anote">Upsets compare the teams' game-win rates from completed prior weeks only. Teams without earlier results are not eligible for an upset label. Weekly recaps can be posted and pinned as official Community announcements by an officer.</div>`;
       if(bmod&&bu&&recapFor(week))html+='<p><button type="button" class="btn primary" id="publishWeeklyHighlights" data-week="'+week+'">📌 Publish & pin Week '+week+' recap</button><span id="weeklyRecapStatus" class="mini muted" style="margin-left:10px"></span></p>';
     } else if(analyticsPage==="power"){
-      html+=pageTitle("Analytical Power Rankings","Not the official standings. Rating formula is 60% last-three-match game win rate + 30% season rate + 10% opponent strength.");
-      html+=table(["#","Team","Rating","Last 3","Season","Opponent strength"],ranks().map((r,i)=>row([String(i+1),safe(r.name),r.score.toFixed(1),pct(r.recent),pct(r.overall),pct(r.strength)])));
+      html+=pageTitle("Analytical Power Rankings",powerRankingWeights);
+      html+=table(["#","Team","Rating","Recent game win %","Season game win %","Season match win %","Opponent strength"],ranks().map((r,i)=>row([String(i+1),safe(r.name),r.score.toFixed(1),pct(r.recent),pct(r.overall),r.matches?pct(r.matchRate):"—",pct(r.strength)])));
       html+=`<p class="mini muted">Early in the season these ratings can swing sharply. More recent matches are weighted more heavily.</p>`;
     } else if(analyticsPage==="h2h"){
       const teams=allTeams();let first=$a("h2hA")?.value||teams[0],second=$a("h2hB")?.value||teams[1];
