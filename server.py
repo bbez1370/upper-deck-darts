@@ -4,6 +4,8 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import csv, requests, re, json, pathlib, time
 from concurrent.futures import ThreadPoolExecutor
+from collections import Counter, defaultdict
+from itertools import combinations
 
 ROOT=pathlib.Path(__file__).parent
 SCHEDULE=json.loads((ROOT/'schedule.json').read_text())
@@ -189,6 +191,7 @@ def refresh():
     return payload
 
 @app.route('/')
+@app.route('/league-info')
 def home():
     response=send_from_directory(ROOT,'index.html')
     response.headers['Cache-Control']='no-store, max-age=0, must-revalidate'
@@ -209,7 +212,7 @@ def live():
 def debug():return jsonify({'standings':report_diagnostic(STANDINGS),'games':report_diagnostic(GAMES)})
 
 # Additional public LeagueLeader report for player-level analytics.
-PLAYER_DETAIL='https://leagueleader.net/sharedreport.php?operatorid=497&code=d512d685-0570-4906-ad06-8c03b903b500'
+PLAYER_DETAIL='https://leagueleader.net/sharedreport.php?operatorid=497&code=963b7aa0-4cc4-4738-bb52-20240e9ae6c6'
 
 player_games_cache={'at':0,'payload':None}
 
@@ -1059,8 +1062,118 @@ def scoring_records():
             return jsonify({**achievement_cache['payload'],'stale':True})
         return jsonify({'error':'Could not load official scoring report: '+str(error)}),503
 
-def verified_player_games(live_players):
-    """Use the dated export for audited weeks and retain new rows as undated."""
+def player_game_signature(game):
+    return (game['metric'], canonical_game_format(game['game']), game['win'])
+
+
+def match_player_games(live, historical, matches, team_key):
+    """Reconcile a player's slot-ordered report against audited games and dated team results."""
+    full_game_count = len(live) - len(historical)
+    remaining_matches, remainder = divmod(full_game_count, len(GAME_ORDER))
+    if remainder or not 0 <= remaining_matches <= len(matches):
+        return None
+
+    slots = [(n, 'MPR' if label == 'Cricket' else 'PPD', canonical_game_format(label))
+             for n, label in enumerate(GAME_ORDER, 1)]
+    live_by_metric = {metric: [game for game in live if game['metric'] == metric]
+                      for metric in ('PPD', 'MPR')}
+    history = {(game['inferred_game_number'], game['played_at'][:10]): game
+               for game in historical}
+    if len(history) != len(historical):
+        return None
+    dates = [datetime.strptime(match['times'][0], '%m/%d/%Y %I:%M %p').date().isoformat()
+             for match in matches]
+    if len(set(dates)) != len(dates):
+        return None
+    unique_assignment = None
+    for chosen in combinations(range(len(matches)), remaining_matches):
+        pending = {dates[i]: matches[i] for i in chosen}
+        expected = {metric: [] for metric in live_by_metric}
+        for n, metric, game_format in slots:
+            for date in sorted({date for slot, date in history if slot == n} | pending.keys()):
+                expected[metric].append((n, date, game_format))
+        assignments = []
+        for metric, current in live_by_metric.items():
+            if len(expected[metric]) != len(current):
+                break
+            for (n, date, game_format), game in zip(expected[metric], current):
+                old = history.get((n, date))
+                if old is not None:
+                    if (player_game_signature(old) != player_game_signature(game)
+                            or abs(old['rate'] - game['rate']) > 0.0100001):
+                        break
+                    continue
+                match = pending[date]
+                side = [norm(team) for team in match['teams']].index(team_key)
+                if (canonical_game_format(game['game']) != game_format
+                        or (game['win'] and match['wins'][n - 1] != side)):
+                    break
+                assignments.append({**game, 'inferred_week': match['week'],
+                    'inferred_date': match['times'][n - 1].split(' ', 1)[0],
+                    'inferred_game_number': n, 'inferred_game_format': match['formats'][n - 1],
+                    'inferred_decider': n == 7 and sum(match['wins'][:6]) == 3,
+                    'week_confidence': 'reconciled_live_report'})
+            else:
+                continue
+            break
+        else:
+            if unique_assignment is not None:
+                # Multiple plausible dates require more source evidence.
+                return None
+            unique_assignment = assignments
+    return unique_assignment
+
+
+def reconcile_live_player_games(people, live_players, matches, first_week):
+    """Publish a matchup only when both sides account for all fourteen slots and every win."""
+    team_matches = defaultdict(list)
+    for match in matches:
+        if not match['sequence_valid'] or match['week'] < first_week:
+            continue
+        for team in map(norm, match['teams']):
+            team_matches[team].append(match)
+
+    live_by_key = {(norm(person['name']), norm(person['team'])): person for person in live_players}
+    keys = people.keys() | live_by_key.keys()
+    proposed = defaultdict(list)
+    for team, upcoming in team_matches.items():
+        additions = defaultdict(list)
+        for key in sorted(key for key in keys if key[1] == team):
+            historical = people.get(key, {}).get('games', [])
+            live = live_by_key.get(key, {}).get('games', [])
+            assignments = match_player_games(live, historical, upcoming, team)
+            if assignments is None:
+                break
+            for game in assignments:
+                additions[game['inferred_week']].append((key, game))
+        else:
+            for match in upcoming:
+                games = additions[match['week']]
+                side = [norm(name) for name in match['teams']].index(team)
+                slots = defaultdict(list)
+                for key, game in games:
+                    slots[game['inferred_game_number']].append((key, game))
+                if all(len(slots[n]) == 2 and len({key for key, _ in slots[n]}) == 2 and
+                       sum(game['win'] for _, game in slots[n]) == (match['wins'][n - 1] == side)
+                       for n in range(1, 8)):
+                    key = (match['week'], *sorted(map(norm, match['teams'])))
+                    proposed[key].extend(games)
+
+    completed = Counter()
+    for key, games in proposed.items():
+        if len(games) != 28:
+            continue
+        completed[key[0]] += 1
+        for person_key, game in games:
+            live_person = live_by_key[person_key]
+            person = people.setdefault(person_key, {'name': live_person['name'],
+                'team': live_person['team'], 'games': []})
+            person['games'].append(game)
+    return completed
+
+
+def verified_player_games(live_players, matches=()):
+    """Preserve timestamped results and add only reconciled matches from the live report."""
     people={}
     weeks={}
     with (ROOT/'verified_player_games.csv').open(newline='',encoding='utf-8') as report:
@@ -1082,33 +1195,13 @@ def verified_player_games(live_players):
                 'week_confidence':'timestamped_export',
             })
 
-    def signature(game):
-        return (game['metric'],canonical_game_format(game['game']),game['win'],
-                tuple(sorted(game['achievements'].items())))
-
-    for live in live_players:
-        key=(norm(live['name']),norm(live['team']))
-        person=people.get(key,{'name':live['name'],'team':live['team'],'games':[]})
-        remaining=list(range(len(live['games'])))
-        # Consume exact historical rows before allowing a cent of display rounding.
-        unmatched=[]
-        for game in person['games']:
-            index=next((i for i in remaining if signature(live['games'][i])==signature(game)
-                        and live['games'][i]['rate']==game['rate']),None)
-            if index is None:
-                unmatched.append(game)
-            else:
-                remaining.remove(index)
-        for game in unmatched:
-            index=next((i for i in remaining if signature(live['games'][i])==signature(game)
-                        and abs(live['games'][i]['rate']-game['rate'])<=0.0100001),None)
-            if index is not None:
-                remaining.remove(index)
-        # When the shared report cannot account for the audited records, its
-        # leftovers may be historical revisions. Keep the audited version.
-        if len(live['games'])-len(remaining)==len(person['games']):
-            person['games'].extend(live['games'][i] for i in remaining)
-            people[key]=person
+    export_week = max(weeks)
+    reconciled = reconcile_live_player_games(people, live_players, matches, export_week + 1)
+    complete_weeks = set(weeks)
+    for week in SCHEDULE:
+        if reconciled[week['num']] == len(week['matches']) and week['matches']:
+            complete_weeks.add(week['num'])
+    pending_weeks = sorted({match['week'] for match in matches if match['week'] not in complete_weeks})
 
     players=list(people.values())
     summarize_player_games(players)
@@ -1120,6 +1213,7 @@ def verified_player_games(live_players):
             week=game.get('inferred_week')
             if week is not None:
                 by_week.setdefault(week,{'PPD':[],'MPR':[]})[game['metric']].append(game['rate'])
+                weeks[week] = game['inferred_date']
         person['weekly']=[{
             'week':week,'date':weeks[week],
             **{metric:{'games':len(rates),'average':round(sum(rates)/len(rates),2)} if rates else None
@@ -1136,26 +1230,36 @@ def verified_player_games(live_players):
         total+=len(person['games'])
     return {'players':players,'game_count':total,'player_count':len(players),
             'source':'LeagueLeader timestamped export and Location Stats Report',
-            'verified_through_week':max(weeks),'verified_through_date':weeks[max(weeks)],
+            'verified_through_week':max(complete_weeks),'verified_through_date':weeks[max(complete_weeks)],
+            'timestamped_through_week':export_week,'verified_weeks':sorted(complete_weeks),
+            'pending_weeks':pending_weeks,
             'matching':{'assigned':verified,'unmatched':total-verified}}
 
 
 @app.route('/api/player-games')
 def individual_game_stats():
-    """Serve verified weekly slots and include newly reported, undated games."""
+    """Serve audited player slots and reconcile new matches from LeagueLeader."""
     if player_games_cache['payload'] and time.time()-player_games_cache['at']<300:
         return jsonify(player_games_cache['payload'])
     live_note=None
+    matches=[]
     try:
         _,soup=fetch(PLAYER_DETAIL)
-        live=get_individual_games(rows(soup))
+        report_rows=rows(soup)
+        live=get_individual_games(report_rows)
         if live['game_count']<20 or live['player_count']<5:
             raise ValueError('Unrecognized player game table layout')
         live_players=live['players']
+        matches=build_matches(get_games(report_rows))
     except Exception:
-        live_note='Live player report unavailable. Showing the timestamped export.'
+        live_note='Live player report unavailable. Showing the last verified results.'
         live_players=[]
-    result=verified_player_games(live_players)
+    result=verified_player_games(live_players, matches)
+    previous=player_games_cache['payload']
+    if previous and not set(previous['verified_weeks']).issubset(result['verified_weeks']):
+        pending=sorted(set(result['pending_weeks'])-set(previous['verified_weeks']))
+        result={**previous, 'pending_weeks':pending}
+        live_note=live_note or 'The latest report changed. Showing the last verified player weeks.'
     if live_note:
         result['live_note']=live_note
     result['updated']=datetime.now().astimezone().isoformat(timespec='seconds')
